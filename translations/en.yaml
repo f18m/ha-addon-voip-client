@@ -1,2 +1,9 @@
 ---
 configuration:
+  voip_provider:
+    name: VOIP Provider
+    description: You need to have an account with a VOIP provider to use this addon.
+
+  voip_provider.name:
+    name: VOIP Provider Name
+    description: The name of the VOIP provider, e.g. "sipgate", "Eutelia/Orchestra", etc. This is just for your reference.

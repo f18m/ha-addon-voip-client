@@ -7,7 +7,7 @@ version: 3.3.0
 slug: voip-client
 name: voip-client
 description: A VOIP client based on Baresip
-url: https://github.com/f18m/ha-addon-voip-client-server/tree/main
+url: https://github.com/f18m/ha-addon-voip-client/tree/main
 # advanced true means that the HA user can see this addon only if it's flagged as 'advanced' in the
 # Home Assistant UI
 advanced: false
