@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"log"
@@ -61,7 +62,7 @@ func main() {
 				if !ok {
 					continue
 				}
-				log.Println("EVENT: " + string(e.RawJSON))
+				logger.Info("EVENT: " + string(e.RawJSON))
 
 				// your logic goes here
 
@@ -69,7 +70,7 @@ func main() {
 				if !ok {
 					continue
 				}
-				log.Println("RESPONSE: " + string(r.RawJSON))
+				logger.Info("RESPONSE: " + string(r.RawJSON))
 
 				// your logic goes here
 			}
@@ -77,11 +78,17 @@ func main() {
 	}()
 
 	go func() {
-		// Give baresip some time to init and register ua
-		time.Sleep(5 * time.Second)
+		logger.Info("Reading from stdin...")
+		// reader := bufio.NewReader(os.Stdin)
+		// text, _ := reader.ReadString('\n')
+		scanner := bufio.NewScanner(os.Stdin)
+		for scanner.Scan() {
+			logger.Info("Received from stdin: " + scanner.Text())
 
-		if err := gb.CmdDial("012345"); err != nil {
-			log.Println(err)
+			err := gb.CmdDial(scanner.Text())
+			if err != nil {
+				logger.Infof("Error dialing: %s", err)
+			}
 		}
 	}()
 
