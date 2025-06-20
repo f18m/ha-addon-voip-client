@@ -44,15 +44,30 @@ func (l *CustomLogger) Log(level LogLevel, message string) {
 	l.logger.Print(logMessage)
 }
 
+/*
 // Info
 func (l *CustomLogger) Info(message string) {
 	l.Log(INFO, message)
 }
-
 // Infof
 // Arguments are handled in the manner of [fmt.Printf].
 func (l *CustomLogger) Infof(format string, v ...any) {
 	l.Info(fmt.Sprintf(format, v...))
+}
+*/
+
+// Info
+func (l *CustomLogger) Info(args ...interface{}) {
+	str := ""
+	for a := range args {
+		str += fmt.Sprintf("%v ", a)
+	}
+
+	l.Log(INFO, str)
+}
+
+func (l *CustomLogger) Infof(template string, args ...interface{}) {
+	l.Log(INFO, fmt.Sprintf(template, args...))
 }
 
 // Warn
