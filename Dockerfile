@@ -11,7 +11,7 @@ ARG BUILD_FROM
 #         https://github.com/home-assistant/builder/blob/master/build.yaml  points to "amd64-base:3.20"
 #         docker run -ti ghcr.io/home-assistant/amd64-base:3.20 cat etc/os-release
 #       shows that the base OS is alpine:3.20.
-FROM alpine:3.20 AS baresip-builder
+FROM alpine:3.22 AS baresip-builder
 ENV VERSION=v3.23.0
 WORKDIR /root/
 
