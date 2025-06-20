@@ -1,10 +1,43 @@
 ARG BUILD_FROM
 
+# --- BARESIP BUILD
+# NOTE: baresip has ready-to-use docker images, see https://github.com/baresip/docker
+# However these images are Debian based and not musl-based, so we cannot use them.
+# Note also that there is a a baresip package in Alpine, but it's available only in "edge/testing":
+# https://pkgs.alpinelinux.org/package/edge/testing/x86_64/baresip
+# That's why we build baresip from source here.
+
+FROM alpine:3.19 AS baresip-builder
+ENV VERSION=v3.23.0
+WORKDIR /root/
+
+# install build dependencies
+RUN apk add build-base make cmake pkgconf git openssl-dev wget ca-certificates linux-headers
+
+# first build the libre dependency:
+RUN git clone -b ${VERSION} --depth=1 https://github.com/baresip/re.git 
+RUN cd re && \
+    cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS="-g" && \
+    cmake --build build -j4 && \
+    cmake --install build --prefix dist && cp -a dist/* /usr/
+
+# then build the baresip binary:
+RUN git clone -b ${VERSION} --depth=1 https://github.com/baresip/baresip.git && \
+    cd baresip && \
+    cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS="-g" -DCMAKE_CXX_FLAGS="-g" -DCMAKE_INSTALL_PREFIX=/usr && \
+    cmake --build build -j4 && \
+    cmake --install build --prefix dist && cp -a dist/* /usr/
+
+# copy everthing into /root/dist/usr/ to simplify the copy in the final layer
+RUN mkdir -p /root/dist/usr && \
+    cp -a /root/re/dist/* /root/dist/usr/ && \
+    cp -a /root/baresip/dist/* /root/dist/usr/
+
 # --- BACKEND BUILD
 # About base image: we need to use a musl-based docker image since the actual HomeAssistant addon
 # base image will be musl-based as well and we need to ensure binary compatibility between he
 # builder layer and the actual addon layer.
-FROM golang:1.24-alpine AS builder
+FROM golang:1.24-alpine AS backend-builder
 
 # build go backend
 WORKDIR /app/backend
@@ -30,6 +63,7 @@ ENV LANG=C.UTF-8
 
 # Setup base
 #RUN apk add --no-cache nginx-debug sqlite socat && mv /etc/nginx /etc/nginx-orig
+#RUN apk add baresip
 
 # Copy data
 COPY rootfs /
@@ -43,7 +77,10 @@ COPY rootfs /
 #COPY frontend/libs/*.js /opt/web/static/
 #COPY frontend/images/*.png /opt/web/static/
 
+# Copy baresip binary
+COPY --from=baresip-builder /root/dist/usr/ /usr/
+
 # Copy backend binary
-COPY --from=builder /backend /opt/bin/
+COPY --from=backend-builder /backend /opt/bin/
 
 LABEL org.opencontainers.image.source=https://github.com/f18m/ha-addon-voip-client

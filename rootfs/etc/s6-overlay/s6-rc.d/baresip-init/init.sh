@@ -21,7 +21,9 @@ tempio \
     -template /usr/share/tempio/baresip-accounts.tmpl \
     -out "${BARESIP_ACCOUNTS}"
 
-log_info "Full baresip config:"
-cat -n $BARESIP_CONFIG
+log_info "Baresip accounts:"
+cat -n $BARESIP_ACCOUNTS
 
 log_info "Successfully completed baresip configuration."
+
+sleep 1000
