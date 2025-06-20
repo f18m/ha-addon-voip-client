@@ -1,0 +1,195 @@
+#
+# This pipeline is testing and building the addon for the Home Assistant
+# and publishing its docker image to the GHCR registry
+#
+name: "Main CI"
+
+on: 
+  push:
+    branches:
+      - '**'
+    tags:
+      - '*'
+  # add a cron job to run every month -- ensure there's a valid CI build every month
+  # this is also useful to check if something breaks e.g. due to infrastructure changes (e.g. Ubuntu OS)
+  # and there are no commits for a long time on the project
+  schedule:
+    - cron: '0 0 1 * *'
+
+jobs:
+  unit_tests:
+    name: Golang Tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v4
+
+      - name: Build golang code
+        run: |
+          cd backend
+          go build -o uibackend main.go
+
+      - name: Run unit tests
+        run: |
+          cd backend
+          go test -v -cover ./...
+
+  golangci:
+    name: Linter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.1.0
+          working-directory: backend
+        
+  check_tag:
+    name: Check if Tag Build
+    runs-on: ubuntu-latest
+    outputs:
+      is_tag: ${{ steps.check.outputs.is_tag }}
+
+    steps:
+    - name: Check if it's a tagged release
+      id: check
+      run: |
+        echo "GITHUB_REF is: ${GITHUB_REF}"
+        if [[ -n "${GITHUB_REF##*refs/tags/*}" ]]; then
+          echo "This looks like a non-TAG build"
+          echo "is_tag=false" >> $GITHUB_ENV
+          echo "is_tag=false" >> $GITHUB_OUTPUT
+        else
+          echo "This looks like a TAG build"
+          echo "is_tag=true" >> $GITHUB_ENV
+          echo "is_tag=true" >> $GITHUB_OUTPUT
+        fi
+    - run: |
+        echo "This is a TAG build"
+      if: ${{ steps.check.outputs.is_tag == 'true' }}
+    - run: |
+        echo "This is a non-TAG build"
+      if: ${{ steps.check.outputs.is_tag == 'false' }}
+
+  publish-docker-image:
+    name: Publish
+    runs-on: ubuntu-latest
+    needs:
+      - unit_tests
+      - check_tag
+      - golangci
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v4
+        with:
+          path: ./myaddon
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+        
+      # -------------------------------------------------------------------------- #
+      #                       build & push for tagged builds                       #
+      # -------------------------------------------------------------------------- #
+
+      - name: Check coherency between tag and config.yaml
+        run: |
+          git_tag=${GITHUB_REF##*/}
+          echo "Git tag is [${git_tag}]"
+
+          # now get the version declared in config.yaml
+          wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq && \
+            chmod +x /usr/bin/yq
+          config_tag=$(yq .version ./myaddon/config.yaml)
+          echo "Config YAML tag is [${config_tag}]"
+          
+          # compare
+          if [[ "${git_tag}" != "${config_tag}" ]]; then
+            echo "MISMATCH DETECTED between Git and config.yaml. Please remember to bump the version"
+            echo "inside config.yaml before releasing a new tag."
+            exit 123
+          else
+            echo "Git and config.yaml are coherent! Proceeding."
+          fi
+        if: ${{ needs.check_tag.outputs.is_tag == 'true' }}
+        
+      - name: Docker build and push (tag builds)
+        uses: home-assistant/builder@master
+        with:
+          args: |
+            --armv7 --amd64 --aarch64 --i386 \
+            --target myaddon \
+            --docker-hub ghcr.io/f18m
+        if: ${{ needs.check_tag.outputs.is_tag == 'true' }}
+        
+      - name: Emit Architecture list
+        run: |
+          echo "### Supported Docker Image Architectures" >> $GITHUB_STEP_SUMMARY
+          echo '`armv7`, `amd64`, `aarch64`, `i386`' >> $GITHUB_STEP_SUMMARY
+        if: ${{ needs.check_tag.outputs.is_tag == 'true' }}
+
+
+
+      # -------------------------------------------------------------------------- #
+      #                       build & push for non-TAG builds                      #
+      # -------------------------------------------------------------------------- #
+
+      - name: Metadata extraction
+        id: meta
+        uses: docker/metadata-action@v5
+        if: ${{ needs.check_tag.outputs.is_tag == 'false' }}
+
+      - run: |
+          echo "Docker image will be versioned as: ${{ steps.meta.outputs.version }}"
+        if: ${{ needs.check_tag.outputs.is_tag == 'false' }}
+
+      # notice that we build only 1 arch to speedup
+      # notice the additional --version and --no-latest flags
+      # compared to the variant for TAG builds:
+      - name: Docker build and push (non-tag builds)
+        uses: home-assistant/builder@master
+        with:
+          args: |
+            --amd64 \
+            --target myaddon \
+            --docker-hub ghcr.io/f18m \
+            --version ${{ steps.meta.outputs.version }} \
+            --no-latest
+        if: ${{ needs.check_tag.outputs.is_tag == 'false' }}
+
+      - name: Emit Architecture list
+        run: |
+          echo "### Supported Docker Image Architectures" >> $GITHUB_STEP_SUMMARY
+          echo '`amd64` [non-tag build]' >> $GITHUB_STEP_SUMMARY
+        if: ${{ needs.check_tag.outputs.is_tag == 'false' }}
+
+
+
+      # -------------------------------------------------------------------------- #
+      #                                 Job summary                                #
+      # -------------------------------------------------------------------------- #
+
+      - name: Emit Job Summary
+        run: |
+          echo "### Published Docker Image :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "ghcr.io/f18m/${{ github.repository }}:${{ steps.meta.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
