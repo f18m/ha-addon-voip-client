@@ -1,0 +1,20 @@
+#!/usr/bin/with-contenv bashio
+BARESIP_CONFIG_DIR="/etc/baresip/"
+
+# Run baresip
+bashio::log.info "Starting baresip..."
+
+# Set max open file limit to speed up startup
+ulimit -n 1024
+
+# NOTE: that the baresip-init service has already created the baresip accounts file
+# and the baresip config file, so we can just run baresip now.
+# Also note that we don't want/need baresip to run in daemon mode
+#
+# -f <path>        Config path
+# -c               Disable colored log
+# -v               Verbose debug
+# -a <software>    Specify SIP User-Agent string
+#
+exec baresip -f "${BARESIP_CONFIG_DIR}" -c -v -a "ha-addon-voip-client" < /dev/null
+

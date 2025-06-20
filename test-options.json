@@ -1,0 +1,7 @@
+{
+  "voip_provider": {
+      "name": "test-user",
+      "account": "sip:user@example.com",
+      "password": "secretpass"
+  }
+}
