@@ -29,7 +29,7 @@ RUN cd re && \
     cmake --install build --prefix dist && cp -a dist/* /usr/
 
 # baresip dependencies
-RUN apk add opus-dev fdk-aac-dev alsa-lib-dev opencore-amr-dev pulseaudio-dev spandsp-dev
+RUN apk add opus-dev fdk-aac-dev alsa-lib-dev opencore-amr-dev pulseaudio-dev spandsp-dev tiff-dev
 
 # then build the baresip binary:
 RUN git clone -b ${VERSION} --depth=1 https://github.com/baresip/baresip.git && \
