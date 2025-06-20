@@ -87,6 +87,9 @@ COPY rootfs /
 #COPY frontend/libs/*.js /opt/web/static/
 #COPY frontend/images/*.png /opt/web/static/
 
+# Install baresip runtime dependencies
+RUN apk add --no-cache opus opencore-amr spandsp alsa-lib pulseaudio fdk-aac
+
 # Copy baresip binary
 COPY --from=baresip-builder /root/dist/usr/ /usr/
 

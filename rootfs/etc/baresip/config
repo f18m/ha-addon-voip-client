@@ -82,7 +82,7 @@ rtp_stats		no
 #------------------------------------------------------------------------------
 # Modules
 
-module_path		/usr/lib64/baresip/modules
+module_path		/usr/lib/baresip/modules
 
 # UI Modules
 #module			stdio.so    # no stdin in "server" mode
@@ -91,14 +91,13 @@ module_path		/usr/lib64/baresip/modules
 #module			httpd.so    # the HTTP interface is not used
 
 # Audio codec Modules (in order)
-# FIXME: I may want to enable more of these in future
-#module			opus.so
-#module			amr.so
+module			opus.so
+module			amr.so
 #module			g7221.so
-#module			g722.so
-#module			g726.so
+module			g722.so
+module			g726.so
 module			g711.so
-#module			l16.so
+module			l16.so
 #module			mpa.so
 #module			codec2.so
 
@@ -112,8 +111,8 @@ module			auresamp.so
 
 # Audio driver Modules
 # FIXME: probably all but aufile.so can be disabled
-#module			alsa.so
-#module			pulse.so
+module			alsa.so
+module			pulse.so
 module			pipewire.so
 #module			jack.so
 #module			portaudio.so
