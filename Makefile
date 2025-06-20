@@ -15,12 +15,12 @@ build-backend:
 	cd backend && \
 		go test -v -cover ./...
 
-# fmt-backend:
-# 	cd backend && \
-# 		go fmt ./...
-# 	# required by the gofumpt linter:
-# 	cd backend && \
-# 		gofumpt -l -w -extra .
+fmt-backend:
+	cd backend && \
+		go fmt ./...
+	# required by the gofumpt linter:
+	cd backend && \
+		gofumpt -l -w -extra .
 
 # build-frontend:
 # 	@echo "Assuming YARN is already installed -- see https://yarnpkg.com/getting-started/install if that's not the case"

@@ -9,5 +9,4 @@ func main() {
 	logger := logger.NewCustomLogger("voip-client")
 
 	logger.Info("VOIP client backend starting")
-
 }
