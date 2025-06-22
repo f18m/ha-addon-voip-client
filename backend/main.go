@@ -124,14 +124,24 @@ func main() {
 		}
 
 		// Respond to the client
-		fmt.Fprintf(w, "Payload received successfully!")
+		_, _ = fmt.Fprintf(w, "Payload received successfully!")
 	})
+
+	// Create a custom HTTP server with timeouts
+	httpServer := &http.Server{
+		Addr:           ":80",             // Address to listen on
+		Handler:        nil,               // Use the default handler (http.DefaultServeMux)
+		ReadTimeout:    10 * time.Second,  // Maximum duration for reading the entire request, including body
+		WriteTimeout:   10 * time.Second,  // Maximum duration before timing out writes of the response
+		IdleTimeout:    120 * time.Second, // Maximum amount of time to wait for the next request when keep-alive is enabled
+		MaxHeaderBytes: 1 << 20,           // Max size of request headers, default is 1MB
+	}
 
 	// Launch the HTTP server in a goroutine
 	go func() {
 		port := ":80"
 		logger.Infof("Server listening on port %s\n", port)
-		if err := http.ListenAndServe(port, nil); err != nil {
+		if err := httpServer.ListenAndServe(); err != nil {
 			logger.Fatalf("Failed to start server: %s\n", err)
 		}
 	}()
