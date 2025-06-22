@@ -108,6 +108,7 @@ test-docker-image:
 	@echo
 	@echo "Starting container of image ${IMAGETAG}:localtest" 
 	docker run \
+		-it \
 		--rm \
 		--name $(TEST_CONTAINER_NAME) \
 		${DOCKER_RUN_OPTIONS} \

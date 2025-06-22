@@ -2,10 +2,11 @@
 package main
 
 import (
-	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
-	"log"
+	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -14,6 +15,11 @@ import (
 
 	"github.com/f18m/go-baresip/pkg/gobaresip"
 )
+
+type Payload struct {
+	CalledNumber string `json:"called_number"`
+	MessageTTS   string `json:"message_tts"`
+}
 
 func main() {
 	logger := logger.NewCustomLogger("voip-client")
@@ -76,19 +82,57 @@ func main() {
 			}
 		}
 	}()
+	/*
+		go func() {
+			logger.Info("Reading from stdin...")
+			// reader := bufio.NewReader(os.Stdin)
+			// text, _ := reader.ReadString('\n')
+			scanner := bufio.NewScanner(os.Stdin)
+			for scanner.Scan() {
+				logger.Info("Received from stdin: " + scanner.Text())
 
-	go func() {
-		logger.Info("Reading from stdin...")
-		// reader := bufio.NewReader(os.Stdin)
-		// text, _ := reader.ReadString('\n')
-		scanner := bufio.NewScanner(os.Stdin)
-		for scanner.Scan() {
-			logger.Info("Received from stdin: " + scanner.Text())
-
-			err := gb.CmdDial(scanner.Text())
-			if err != nil {
-				logger.Infof("Error dialing: %s", err)
+				err := gb.CmdDial(scanner.Text())
+				if err != nil {
+					logger.Infof("Error dialing: %s", err)
+				}
 			}
+		}()*/
+
+	// Define the handler for the HTTP endpoint
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// Only accept POST requests
+		if r.Method != http.MethodPost {
+			http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Decode the JSON payload from the request body
+		var payload Payload
+		err := json.NewDecoder(r.Body).Decode(&payload)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		// Log the received payload
+		logger.Infof("Received payload: CalledNumber=%s, MessageTTS=%s\n", payload.CalledNumber, payload.MessageTTS)
+
+		// Dial a new call
+		err = gb.CmdDial(payload.CalledNumber)
+		if err != nil {
+			logger.Infof("Error dialing: %s", err)
+		}
+
+		// Respond to the client
+		fmt.Fprintf(w, "Payload received successfully!")
+	})
+
+	// Launch the HTTP server in a goroutine
+	go func() {
+		port := ":80"
+		logger.Infof("Server listening on port %s\n", port)
+		if err := http.ListenAndServe(port, nil); err != nil {
+			logger.Fatalf("Failed to start server: %s\n", err)
 		}
 	}()
 
@@ -97,7 +141,7 @@ func main() {
 	done := make(chan bool, 1)
 	go func() {
 		sig := <-sigs
-		log.Printf("** RECEIVED SIGNAL %v **\n", sig)
+		logger.Warnf("** RECEIVED SIGNAL %v **\n", sig)
 		done <- true
 	}()
 
