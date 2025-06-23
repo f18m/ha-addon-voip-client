@@ -3,11 +3,12 @@ backend/tmp/
 
 frontend/node_modules/
 frontend/.sass-cache/
-
 # all 3rd party CSS and JS libraries are downloaded by YARN -- no point in storing them in git
 frontend/external-libs/
 
-.docker-image
-test-db.sqlite3
+# store here your real VOIP provider credentials for testing this addon:
+secret-options.json
 
-dart-sass/
+# store here your real phone number for testing this addon:
+testing/test-httppayload-myphone.json
+

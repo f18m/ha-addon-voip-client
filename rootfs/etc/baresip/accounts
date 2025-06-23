@@ -1,0 +1,10 @@
+#
+# Baresip configuration for HomeAssistant VOIP CLIENT addon
+# See https://github.com/baresip/baresip/wiki/Configuration for reference
+#
+# Baresip ACCOUNTS config file
+#
+# This file is empty because the User Agent registration is performed dynamically
+# by the Home Assistant VOIP CLIENT addon using the equivalent of the "/uanew" CLI command
+# to ensure that the "REGISTER OK" message is captured by the VOIP CLIENT backend.
+#

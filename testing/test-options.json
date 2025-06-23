@@ -1,0 +1,17 @@
+{
+  "voip_provider": {
+      "name": "test-user",
+      "account": "sip:user@example.com",
+      "password": "secretpass"
+  },
+  "contacts":[
+    {
+      "name": "Alice",
+      "uri": "sip:alice@example.com"
+    },
+    {
+      "name": "Bob",
+      "uri": "sip:bob@example.com"
+    }
+  ]
+}

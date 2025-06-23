@@ -1,8 +1,9 @@
 all: build-docker-image
 
-#
-# BUILD targets
-#
+
+# ---------------------------------------------------------------------------- #
+#                                 BUILD targets                                #
+# ---------------------------------------------------------------------------- #
 
 # non-containerized build of the backend -- requires you to have go installed:
 build-backend:
@@ -21,6 +22,11 @@ fmt-backend:
 	# required by the gofumpt linter:
 	cd backend && \
 		gofumpt -l -w -extra .
+
+update-to-latest-gobaresip:
+	cd backend && \
+		go get -u github.com/f18m/go-baresip/pkg/gobaresip@main && \
+		go mod tidy
 
 # build-frontend:
 # 	@echo "Assuming YARN is already installed -- see https://yarnpkg.com/getting-started/install if that's not the case"
@@ -50,9 +56,9 @@ fmt-backend:
 # 	docker run -v $(INPUT_SCSS):/sass/ -v $(OUTPUT_CSS):/css/ -it michalklempa/dart-sass:latest
 
 
-#
-# DOCKER targets
-#
+# ---------------------------------------------------------------------------- #
+#                                DOCKER BUILD                                  #
+# ---------------------------------------------------------------------------- #
 
 # NOTE: the architecture "armhf" (ARM v6) is excluded from the list because Go toolchain is not available there
 ARCH:=--armv7 --amd64 --aarch64 --i386
@@ -89,17 +95,31 @@ build-docker-image-raw:
 		-t $(IMAGETAG):localtest \
 		.
 
+
+# ---------------------------------------------------------------------------- #
+#                                 TEST TARGETS                                 #
+# ---------------------------------------------------------------------------- #
+
+ifeq ($(TEST_OPTIONS),)
+# test-options.json are fake/invalid options, so you can't do a lot of testing with these
+# however you can provide your own
+TEST_OPTIONS:=$(shell pwd)/testing/test-options.json
+endif
+
 TEST_CONTAINER_NAME:=voip-client-test
+# TEST_CONTAINER_HOST_PORT is a port that hopefully is free
+TEST_CONTAINER_HOST_PORT:=9123
 DOCKER_RUN_OPTIONS:= \
-	-v $(shell pwd)/test-options.json:/data/options.json \
+	-v $(TEST_OPTIONS):/data/options.json \
 	-v $(shell pwd)/config.yaml:/opt/bin/addon-config.yaml \
 	-v $(shell pwd)/backend:/app \
+	-p $(TEST_CONTAINER_HOST_PORT):80 \
 	-e LOCAL_TESTING=1
 
-# when using the 'test-docker-image' target it's normal to see messages like
-#    "Something went wrong contacting the API"
-# at startup of the docker container... the reason is that the startup scripts
-# will try to reach to HomeAssistant Supervisor which is not running...
+#
+# E.g.
+#    make test-docker-image TEST_OPTIONS=./secret-options.json
+#
 test-docker-image: 
 	$(MAKE) FAST=1 build-docker-image
 	@echo
@@ -114,6 +134,27 @@ test-docker-image:
 		${DOCKER_RUN_OPTIONS} \
 		${IMAGETAG}:localtest
 
+
+ifeq ($(TEST_CALL_PAYLOAD),)
+TEST_CALL_PAYLOAD:=$(shell pwd)/testing/test-httppayload-dummycall.json
+endif
+
+#
+# Use this after launchign "make test-docker-image", from another terminal
+#
+# E.g.
+#   make test-call TEST_CALL_PAYLOAD=./testing/test-httppayload-myphone.json
+#
+test-call:
+	curl -vv http://localhost:$(TEST_CONTAINER_HOST_PORT) \
+		-H "Content-Type: application/json" \
+		-d @$(TEST_CALL_PAYLOAD)
+
+
+
+
+
+
 # # NOTE: in the HTTP link below the port is actually the one in test-options.json, and currently it's 8976
 # test-docker-image-live: 
 # 	sudo docker build -f Dockerfile.live -t debug-image-live .
@@ -126,4 +167,3 @@ test-docker-image:
 # 		--name $(TEST_CONTAINER_NAME) \
 # 		${DOCKER_RUN_OPTIONS} \
 # 		debug-image-live
-
