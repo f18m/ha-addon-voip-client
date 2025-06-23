@@ -9,10 +9,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/f18m/go-baresip/pkg/gobaresip"
 	"voip-client-backend/pkg/fsm"
 	"voip-client-backend/pkg/httpserver"
 	"voip-client-backend/pkg/logger"
+
+	"github.com/f18m/go-baresip/pkg/gobaresip"
 )
 
 func main() {
@@ -21,7 +22,7 @@ func main() {
 
 	// Allocate Baresip instance with options
 	gb, err := gobaresip.New(
-		gobaresip.UseExternalBaresip(),
+		gobaresip.UseExternalBaresip(), // s6-overlay is running baresip in the background
 		gobaresip.SetLogger(logger),
 		gobaresip.SetPingInterval(60*time.Second),
 	)
@@ -29,13 +30,7 @@ func main() {
 		logger.Fatalf("init error: %s", err)
 	}
 
-	// Run Baresip Serve() method.
-	// This is meant to be similar to the http.Serve() method with the difference that
-	// it takes an explicit context that can be used to cancel the Baresip instance.
-	// In this example, we assume there is an external Baresip process launched
-	// so Serve() won't start any background process.
-	// The Baresip instance can be terminated at any time using the baresipCancel() function.
-	// Communication happens using the event/response channels... keep reading
+	// Run Baresip Serve() method in its own goroutine
 	baresipCtx, baresipCancel := context.WithCancel(context.Background())
 	go func() {
 		err := gb.Serve(baresipCtx)
@@ -58,7 +53,7 @@ func main() {
 	// - BARESIP events: unsolicited messages from baresip, e.g. incoming calls, registrations, etc.
 	// - BARESIP responses: responses to commands sent to baresip, e.g. command results
 	// - INPUT HTTP requests: messages coming from HomeAssistant via the HTTP server
-	// using a simple Finite State Machine (FSM)
+	// using a simple Finite State Machine (FSM) -- all business logic is implemented in the FSM
 	eChan := gb.GetEventChan()
 	rChan := gb.GetResponseChan()
 	iChan := inputServer.GetInputChannel()
@@ -84,14 +79,14 @@ func main() {
 					_ = fsmInstance.OnCallClosed(e)
 
 				default:
-					logger.Info("Ignoring event %s", e.Type)
+					logger.Infof("Ignoring event type %s", e.Type)
 				}
 
 			case r, ok := <-rChan:
 				if !ok {
 					continue
 				}
-				logger.Info("RESPONSE: " + string(r.RawJSON))
+				// logger.Info("RESPONSE: " + string(r.RawJSON))
 				_ = fsmInstance.OnBaresipCmdResponse(r)
 			}
 		}

@@ -10,8 +10,30 @@ import (
 	"github.com/f18m/go-baresip/pkg/gobaresip"
 )
 
+/*
+---
+config:
+
+	theme: redux
+
+---
+flowchart TD
+
+	    WaitingInputs
+		LaunchTTSAndWait
+		WaitForDialCmdResponse
+		WaitForCallEstablishment
+		WaitForAusrcCmdResponse
+		WaitForCallCompletion
+
+	    WaitingInputs --HTTP Call Request --> WaitForDialCmdResponse
+	    WaitForDialCmdResponse -- Baresip cmd response --> WaitForCallEstablishment
+	    WaitForCallEstablishment -- Baresip call event --> WaitForAusrcCmdResponse
+	    WaitForAusrcCmdResponse -- Baresip cmd response --> WaitForCallCompletion
+	    WaitForCallCompletion -- Baresip call event --> WaitingInputs
+*/
 const (
-	WaitingInputs = iota
+	WaitingInputs = iota + 1
 	LaunchTTSAndWait
 	WaitForDialCmdResponse
 	WaitForCallEstablishment
@@ -44,6 +66,7 @@ func (fsm *VoipClientFSM) GetCurrentState() int {
 }
 
 func (fsm *VoipClientFSM) transitionTo(state int) {
+	fsm.logger.Infof("FSM: transition from state %d to %d", fsm.currentState, state)
 	fsm.currentState = state
 }
 
@@ -79,7 +102,7 @@ func (fsm *VoipClientFSM) OnNewOutgoingCallRequest(newRequest httpserver.Payload
 }
 
 func (fsm *VoipClientFSM) OnBaresipCmdResponse(response gobaresip.ResponseMsg) error {
-	fsm.logger.Infof("Received baresip response: %+v", response)
+	fsm.logger.Infof("Received baresip response with TOKEN: %s", response.Token)
 
 	switch fsm.currentState {
 	case WaitForDialCmdResponse:
@@ -119,7 +142,7 @@ func (fsm *VoipClientFSM) OnBaresipCmdResponse(response gobaresip.ResponseMsg) e
 }
 
 func (fsm *VoipClientFSM) OnCallEstablished(event gobaresip.EventMsg) error {
-	fsm.logger.Infof("Received call estabilished status update: %+v", event)
+	fsm.logger.Infof("Received call estabilished status update for Peer URI: %s", event.PeerURI)
 
 	if fsm.currentState != WaitForCallEstablishment {
 		fsm.logger.Warnf("FSM is not in the WaitForCallEstablishment state, current state: %d. Ignoring new request.", fsm.currentState)
@@ -139,7 +162,7 @@ func (fsm *VoipClientFSM) OnCallEstablished(event gobaresip.EventMsg) error {
 }
 
 func (fsm *VoipClientFSM) OnCallClosed(event gobaresip.EventMsg) error {
-	fsm.logger.Infof("Received call estabilished status update: %+v", event)
+	fsm.logger.Infof("Received call closed event for Peer URI: %s", event.PeerURI)
 
 	if fsm.currentState != WaitForCallCompletion {
 		fsm.logger.Warnf("FSM is not in the WaitForCallCompletion state, current state: %d. Ignoring new request.", fsm.currentState)
