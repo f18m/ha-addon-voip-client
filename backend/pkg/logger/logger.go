@@ -44,21 +44,9 @@ func (l *CustomLogger) Log(level LogLevel, message string) {
 	l.logger.Print(logMessage)
 }
 
-/*
-// Info
-func (l *CustomLogger) Info(message string) {
-	l.Log(INFO, message)
-}
-// Infof
-// Arguments are handled in the manner of [fmt.Printf].
-func (l *CustomLogger) Infof(format string, v ...any) {
-	l.Info(fmt.Sprintf(format, v...))
-}
-*/
-
-// Info
+// Info function used by GOBARESIP
 func (l *CustomLogger) Info(args ...interface{}) {
-	str := ""
+	str := "go-baresip: "
 	for a := range args {
 		str += fmt.Sprintf("%v ", a)
 	}
@@ -66,8 +54,20 @@ func (l *CustomLogger) Info(args ...interface{}) {
 	l.Log(INFO, str)
 }
 
+// Info function used by GOBARESIP
 func (l *CustomLogger) Infof(template string, args ...interface{}) {
-	l.Log(INFO, fmt.Sprintf(template, args...))
+	l.Log(INFO, fmt.Sprintf("go-baresip: "+template, args...))
+}
+
+// InfoPkg
+func (l *CustomLogger) InfoPkg(pkg, message string) {
+	l.Log(INFO, pkg+": "+message)
+}
+
+// InfoPkgf
+// Arguments are handled in the manner of [fmt.Printf].
+func (l *CustomLogger) InfoPkgf(pkg, format string, v ...any) {
+	l.Info(pkg + ": " + fmt.Sprintf(format, v...))
 }
 
 // Warn

@@ -21,6 +21,8 @@ type HttpServer struct {
 	outCh  chan Payload
 }
 
+const logPrefix = "httpserver"
+
 func NewServer(logger *logger.CustomLogger) HttpServer {
 	h := HttpServer{
 		logger: logger,
@@ -47,7 +49,7 @@ func NewServer(logger *logger.CustomLogger) HttpServer {
 		}
 
 		// Log the received payload
-		logger.Infof("Received payload: CalledNumber=%s, MessageTTS=%s\n", payload.CalledNumber, payload.MessageTTS)
+		logger.InfoPkgf(logPrefix, "Received payload: CalledNumber=%s, MessageTTS=%s\n", payload.CalledNumber, payload.MessageTTS)
 
 		// Validate it
 		if payload.CalledNumber == "" {
@@ -91,7 +93,7 @@ func NewServer(logger *logger.CustomLogger) HttpServer {
 }
 
 func (h *HttpServer) ListenAndServe() {
-	h.logger.Infof("Server listening on %s", h.server.Addr)
+	h.logger.InfoPkgf(logPrefix, "Server listening on %s", h.server.Addr)
 	if err := h.server.ListenAndServe(); err != nil {
 		h.logger.Fatalf("Failed to start server: %s", err)
 	}

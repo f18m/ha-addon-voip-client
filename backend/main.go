@@ -16,6 +16,8 @@ import (
 	"github.com/f18m/go-baresip/pkg/gobaresip"
 )
 
+const logPrefix = "main"
+
 func main() {
 	logger := logger.NewCustomLogger("voip-client")
 	logger.Info("VOIP client backend starting")
@@ -79,7 +81,7 @@ func main() {
 					_ = fsmInstance.OnCallClosed(e)
 
 				default:
-					logger.Infof("Ignoring event type %s", e.Type)
+					logger.InfoPkgf(logPrefix, "Ignoring event type %s", e.Type)
 				}
 
 			case r, ok := <-rChan:
