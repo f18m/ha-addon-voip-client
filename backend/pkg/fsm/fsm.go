@@ -69,7 +69,7 @@ func (s FSMState) String() string {
 	}
 }
 
-const logPrefix = "FSM"
+const logPrefix = "fsm"
 
 type VoipClientFSM struct {
 	logger        *logger.CustomLogger
@@ -81,6 +81,7 @@ type VoipClientFSM struct {
 	// secondary state variables
 	registered             bool
 	numDialCmds            int
+	pendingUaInitCmdToken  string
 	pendingAudioFileToPlay string
 	pendingCallCmdToken    string
 	pendingAusrcCmdToken   string
@@ -95,7 +96,7 @@ func panicIf(condition bool) {
 
 func NewVoipClientFSM(logger *logger.CustomLogger, baresipHandle *gobaresip.Baresip) *VoipClientFSM {
 	return &VoipClientFSM{
-		currentState:  WaitingInputs,
+		currentState:  Uninitialized, // initial state
 		logger:        logger,
 		baresipHandle: baresipHandle,
 	}
@@ -131,7 +132,8 @@ func (fsm *VoipClientFSM) InitializeUserAgent(sip_uri, password string) error {
 		return ErrInvalidState
 	}
 
-	err := fsm.baresipHandle.Cmd("uanew", fmt.Sprintf("%s;auth_pass=%s", sip_uri, password), "uainit")
+	fsm.pendingUaInitCmdToken = "uaregistration_token"
+	err := fsm.baresipHandle.Cmd("uanew", fmt.Sprintf("%s;auth_pass=%s", sip_uri, password), fsm.pendingUaInitCmdToken)
 	if err != nil {
 		fsm.logger.InfoPkgf(logPrefix, "Failed to create new SIP User Agent: %s", err)
 		return err
@@ -142,14 +144,14 @@ func (fsm *VoipClientFSM) InitializeUserAgent(sip_uri, password string) error {
 }
 
 func (fsm *VoipClientFSM) OnRegisterOk(event gobaresip.EventMsg) error {
-	fsm.logger.InfoPkgf(logPrefix, "Successful SIP REGISTER for : %s", event.AccountAOR)
+	fsm.logger.InfoPkgf(logPrefix, "Successful SIP REGISTER for: %s. This is good news. It means your 'voip_provider' addon configuration is valid and Baresip authenticated against your VOIP provider. Now calls can be made and can be received!", event.AccountAOR)
 	fsm.registered = true
 	fsm.transitionTo(WaitingInputs)
 	return nil
 }
 
 func (fsm *VoipClientFSM) OnRegisterFail(event gobaresip.EventMsg) error {
-	fsm.logger.InfoPkgf(logPrefix, "Failed SIP REGISTER for : %s", event.AccountAOR)
+	fsm.logger.InfoPkgf(logPrefix, "Failed SIP REGISTER for: %s. This typically means that the 'voip_provider' addon configuration is invalid (either user or password is invalid). Please check above logs for more details. The addon won't work until the configuration will be fixed.", event.AccountAOR)
 	fsm.registered = false
 
 	// in this state any communication will fail... go back to the initial state
@@ -162,7 +164,7 @@ func (fsm *VoipClientFSM) OnNewOutgoingCallRequest(newRequest httpserver.Payload
 
 	if fsm.currentState != WaitingInputs {
 		// FIXME: perhaps we might instead abort the current operation and start a new call?
-		fsm.logger.Warnf("FSM is not in the WaitingInputs state, current state: %s. Ignoring new request.", fsm.currentState)
+		fsm.logger.Warnf("FSM is not in the WaitingInputs state, current state: %s. Dropping the new call request. Please wait for previous call to get closed.", fsm.currentState)
 		return ErrInvalidState
 	}
 
@@ -192,6 +194,14 @@ func (fsm *VoipClientFSM) OnBaresipCmdResponse(response gobaresip.ResponseMsg) e
 	fsm.logger.InfoPkgf(logPrefix, "Received baresip response with TOKEN: %s", response.Token)
 
 	switch fsm.currentState {
+	case WaitingUserAgentRegistration:
+		if response.Token != fsm.pendingUaInitCmdToken {
+			fsm.logger.Warnf("Unexpected response token %s; was waiting for token %s", response.Token, fsm.pendingUaInitCmdToken)
+			return errors.New("unexpected response token")
+		}
+
+		// no state transition... wait for the REGISTER OK or REGISTER FAIL events...
+
 	case WaitForDialCmdResponse:
 		if response.Token != fsm.pendingCallCmdToken {
 			fsm.logger.Warnf("Unexpected response token %s; was waiting for token %s", response.Token, fsm.pendingCallCmdToken)
