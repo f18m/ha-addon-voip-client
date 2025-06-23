@@ -22,6 +22,11 @@ fmt-backend:
 	cd backend && \
 		gofumpt -l -w -extra .
 
+update-to-latest-gobaresip:
+	cd backend && \
+		go get -u github.com/f18m/go-baresip/pkg/gobaresip@main && \
+		go mod tidy
+
 # build-frontend:
 # 	@echo "Assuming YARN is already installed -- see https://yarnpkg.com/getting-started/install if that's not the case"
 # 	cd frontend/ && \

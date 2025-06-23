@@ -3,23 +3,18 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"voip-client-backend/pkg/fsm"
+	"voip-client-backend/pkg/httpserver"
 	"voip-client-backend/pkg/logger"
 
 	"github.com/f18m/go-baresip/pkg/gobaresip"
 )
-
-type Payload struct {
-	CalledNumber string `json:"called_number"`
-	MessageTTS   string `json:"message_tts"`
-}
 
 func main() {
 	logger := logger.NewCustomLogger("voip-client")
@@ -54,95 +49,52 @@ func main() {
 		}
 	}()
 
+	// Run Input HTTP server
+	inputServer := httpserver.NewServer(logger)
+	go func() {
+		inputServer.ListenAndServe()
+	}()
+
 	// Process
-	// - events: unsolicited messages from baresip, e.g. incoming calls, registrations, etc.
-	// - responses: responses to commands sent to baresip, e.g. command results
-	// reading from the 2 channels:
+	// - BARESIP events: unsolicited messages from baresip, e.g. incoming calls, registrations, etc.
+	// - BARESIP responses: responses to commands sent to baresip, e.g. command results
+	// - INPUT HTTP requests: messages coming from HomeAssistant via the HTTP server
+	// using a simple Finite State Machine (FSM)
 	eChan := gb.GetEventChan()
 	rChan := gb.GetResponseChan()
-
+	iChan := inputServer.GetInputChannel()
+	fsmInstance := fsm.NewVoipClientFSM(logger, gb)
 	go func() {
 		for {
 			select {
+			case i, ok := <-iChan:
+				if !ok {
+					continue
+				}
+				_ = fsmInstance.OnNewOutgoingCallRequest(i)
+
 			case e, ok := <-eChan:
 				if !ok {
 					continue
 				}
-				logger.Info("EVENT: " + string(e.RawJSON))
+				switch e.Type {
+				case gobaresip.UA_EVENT_CALL_ESTABLISHED:
+					_ = fsmInstance.OnCallEstablished(e)
 
-				// your logic goes here
+				case gobaresip.UA_EVENT_CALL_CLOSED:
+					_ = fsmInstance.OnCallClosed(e)
+
+				default:
+					logger.Info("Ignoring event %s", e.Type)
+				}
 
 			case r, ok := <-rChan:
 				if !ok {
 					continue
 				}
 				logger.Info("RESPONSE: " + string(r.RawJSON))
-
-				// your logic goes here
+				_ = fsmInstance.OnBaresipCmdResponse(r)
 			}
-		}
-	}()
-	/*
-		go func() {
-			logger.Info("Reading from stdin...")
-			// reader := bufio.NewReader(os.Stdin)
-			// text, _ := reader.ReadString('\n')
-			scanner := bufio.NewScanner(os.Stdin)
-			for scanner.Scan() {
-				logger.Info("Received from stdin: " + scanner.Text())
-
-				err := gb.CmdDial(scanner.Text())
-				if err != nil {
-					logger.Infof("Error dialing: %s", err)
-				}
-			}
-		}()*/
-
-	// Define the handler for the HTTP endpoint
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// Only accept POST requests
-		if r.Method != http.MethodPost {
-			http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
-		// Decode the JSON payload from the request body
-		var payload Payload
-		err := json.NewDecoder(r.Body).Decode(&payload)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		// Log the received payload
-		logger.Infof("Received payload: CalledNumber=%s, MessageTTS=%s\n", payload.CalledNumber, payload.MessageTTS)
-
-		// Dial a new call
-		err = gb.CmdDial(payload.CalledNumber)
-		if err != nil {
-			logger.Infof("Error dialing: %s", err)
-		}
-
-		// Respond to the client
-		_, _ = fmt.Fprintf(w, "Payload received successfully!")
-	})
-
-	// Create a custom HTTP server with timeouts
-	httpServer := &http.Server{
-		Addr:           ":80",             // Address to listen on
-		Handler:        nil,               // Use the default handler (http.DefaultServeMux)
-		ReadTimeout:    10 * time.Second,  // Maximum duration for reading the entire request, including body
-		WriteTimeout:   10 * time.Second,  // Maximum duration before timing out writes of the response
-		IdleTimeout:    120 * time.Second, // Maximum amount of time to wait for the next request when keep-alive is enabled
-		MaxHeaderBytes: 1 << 20,           // Max size of request headers, default is 1MB
-	}
-
-	// Launch the HTTP server in a goroutine
-	go func() {
-		port := ":80"
-		logger.Infof("Server listening on port %s\n", port)
-		if err := httpServer.ListenAndServe(); err != nil {
-			logger.Fatalf("Failed to start server: %s\n", err)
 		}
 	}()
 
