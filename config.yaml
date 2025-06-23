@@ -48,6 +48,8 @@ options:
     #username: "your-username"
     # the password to use for authentication with the VOIP provider
     password: "your-password"
+  tts_engine:
+    platform: google_translate
   contacts:
     - name: "John Doe"
       # the SIP URI of the contact, in the format
@@ -58,6 +60,8 @@ schema:
     name: str
     account: str
     password: str
+  tts_engine:
+    platform: str
   contacts:
     - name: str
       # the SIP URI of the contact, in the format
