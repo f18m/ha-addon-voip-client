@@ -119,7 +119,12 @@ linters:
 formatters:
   enable:
     - gofmt
-    - gofumpt
+    
+    # as of June 23, I'm getting some weird gofumpt errors and a discrepancy between 
+    #    gofumpt -extra -l -d .
+    # reporting nothing and golangci-lint reporting issues.
+    #- gofumpt
+    
     #- goimports
   settings:
     gofumpt:

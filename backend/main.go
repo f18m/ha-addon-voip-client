@@ -12,7 +12,6 @@ import (
 	"voip-client-backend/pkg/fsm"
 	"voip-client-backend/pkg/httpserver"
 	"voip-client-backend/pkg/logger"
-
 	"github.com/f18m/go-baresip/pkg/gobaresip"
 )
 
