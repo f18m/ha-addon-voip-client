@@ -1,12 +1,18 @@
 # Home Assistant Add-on: VOIP client
 
-TODO
+## Installation
 
-## How to use
+Follow these steps to get the add-on installed on your system:
 
-1. Install the [RESTful Command integration](https://www.home-assistant.io/integrations/rest_command). 
+1. Add the HA addon store for this addon by clicking here: [![Open your Home Assistant instance and show the add add-on repository dialog with a specific repository URL pre-filled.](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Ff18m%2Fha-addons-repo)
 
-2. In your `configuration.yaml` add
+By doing so you should get to your HomeAssistant configuration page for addon digital archives and you should be asked to add `https://github.com/f18m/ha-addons-repo` to the list. Click "Add".
+
+2. In the list of add-ons, search for "Francesco Montorsi addons" and then the `VOIP Client` add-on and click on that. There is also a "BETA" version available, skip it unless you want to try the latest bugfixes and developments.
+
+3. Click on the "INSTALL" button.
+
+4. Now the [RESTful Command integration](https://www.home-assistant.io/integrations/rest_command) has to be configured on your Home Assistant `configuration.yaml`; open it with your favourite editor and append:
 
 ```yaml
 rest_command:
@@ -16,11 +22,18 @@ rest_command:
     method: POST
     headers:
       accept: "application/json, text/html"
-    payload: '{"called_number":"{{ called_number }}","message_tts": "{{ message }}"}}'
+    payload: '{"called_number":"{{ called_number }}","message_tts": "{{ message_tts }}"}}'
     content_type:  'application/json; charset=utf-8'
 ```
 
-3. Create a test automation that runs:
+5. Restart your Home Assistant
+
+
+## How to use
+
+1. Make sure you have the "RESTful Command integration" integration setup; if not, please read the [Installation](#installation) section.
+
+2. You can now use as automation action a new `rest_command.voip_client_call`:
 
 ```yaml
 automation:
@@ -31,6 +44,9 @@ automation:
   actions:
     - action: rest_command.voip_client_call
       data:
-        called_number: <your cellphone number>
-        message: "Just a test"
+        called_number: sip:<number>@<domain>
+        message_tts: "Just a test"
 ```
+
+Make sure you use for the `called_number` the [SIP URI](https://en.wikipedia.org/wiki/SIP_URI_scheme) format
+accepted by your VOIP provider.
