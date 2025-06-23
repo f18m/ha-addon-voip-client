@@ -95,10 +95,13 @@ build-docker-image-raw:
 		.
 
 TEST_CONTAINER_NAME:=voip-client-test
+# TEST_CONTAINER_HOST_PORT is a port that hopefully is free
+TEST_CONTAINER_HOST_PORT:=9123
 DOCKER_RUN_OPTIONS:= \
 	-v $(shell pwd)/test-options.json:/data/options.json \
 	-v $(shell pwd)/config.yaml:/opt/bin/addon-config.yaml \
 	-v $(shell pwd)/backend:/app \
+	-p $(TEST_CONTAINER_HOST_PORT):80 \
 	-e LOCAL_TESTING=1
 
 # when using the 'test-docker-image' target it's normal to see messages like
@@ -132,3 +135,7 @@ test-docker-image:
 # 		${DOCKER_RUN_OPTIONS} \
 # 		debug-image-live
 
+test-call:
+	curl -vv http://localhost:$(TEST_CONTAINER_HOST_PORT) \
+		-H "Content-Type: application/json" \
+		-d '{"called_number":"sip:1234567890@example.com", "message_tts":"Hello, this is a test call from the VoIP client."}'

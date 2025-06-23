@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"voip-client-backend/pkg/config"
 	"voip-client-backend/pkg/fsm"
 	"voip-client-backend/pkg/httpserver"
 	"voip-client-backend/pkg/logger"
@@ -22,6 +23,12 @@ func main() {
 	logger := logger.NewCustomLogger("voip-client")
 	logger.Info("VOIP client backend starting")
 
+	// Read our own config
+	cfg, err := config.ReadAddonOptions()
+	if err != nil {
+		logger.Fatalf("config loading error: %s", err)
+	}
+
 	// Allocate Baresip instance with options
 	gb, err := gobaresip.New(
 		gobaresip.UseExternalBaresip(), // s6-overlay is running baresip in the background
@@ -29,7 +36,7 @@ func main() {
 		gobaresip.SetPingInterval(60*time.Second),
 	)
 	if err != nil {
-		logger.Fatalf("init error: %s", err)
+		logger.Fatalf("baresip init error: %s", err)
 	}
 
 	// Run Baresip Serve() method in its own goroutine
@@ -56,13 +63,25 @@ func main() {
 	// - BARESIP responses: responses to commands sent to baresip, e.g. command results
 	// - INPUT HTTP requests: messages coming from HomeAssistant via the HTTP server
 	// using a simple Finite State Machine (FSM) -- all business logic is implemented in the FSM
+	cChan := gb.GetConnectedChan()
 	eChan := gb.GetEventChan()
 	rChan := gb.GetResponseChan()
 	iChan := inputServer.GetInputChannel()
 	fsmInstance := fsm.NewVoipClientFSM(logger, gb)
+
+	// Initiate
+
 	go func() {
 		for {
 			select {
+			case c, ok := <-cChan:
+				if !ok {
+					continue
+				}
+				if c.Connected {
+					_ = fsmInstance.InitializeUserAgent(cfg.VoipProvider.Account, cfg.VoipProvider.Password)
+				}
+
 			case i, ok := <-iChan:
 				if !ok {
 					continue
@@ -74,6 +93,12 @@ func main() {
 					continue
 				}
 				switch e.Type {
+				case gobaresip.UA_EVENT_REGISTER_OK:
+					_ = fsmInstance.OnRegisterOk(e)
+
+				case gobaresip.UA_EVENT_REGISTER_FAIL:
+					_ = fsmInstance.OnRegisterFail(e)
+
 				case gobaresip.UA_EVENT_CALL_ESTABLISHED:
 					_ = fsmInstance.OnCallEstablished(e)
 

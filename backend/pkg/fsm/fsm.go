@@ -36,7 +36,9 @@ flowchart TD
 type FSMState int
 
 const (
-	WaitingInputs FSMState = iota + 1
+	Uninitialized FSMState = iota + 1
+	WaitingUserAgentRegistration
+	WaitingInputs
 	LaunchTTSAndWait
 	WaitForDialCmdResponse
 	WaitForCallEstablishment
@@ -46,6 +48,10 @@ const (
 
 func (s FSMState) String() string {
 	switch s {
+	case Uninitialized:
+		return "Uninitialized"
+	case WaitingUserAgentRegistration:
+		return "WaitingUserAgentRegistration"
 	case WaitingInputs:
 		return "WaitingInputs"
 	case LaunchTTSAndWait:
@@ -68,13 +74,23 @@ const logPrefix = "FSM"
 type VoipClientFSM struct {
 	logger        *logger.CustomLogger
 	baresipHandle *gobaresip.Baresip
-	currentState  FSMState
-	// channels for communication with the Baresip instance
 
+	// main state machine state
+	currentState FSMState
+
+	// secondary state variables
+	registered             bool
 	numDialCmds            int
 	pendingAudioFileToPlay string
 	pendingCallCmdToken    string
 	pendingAusrcCmdToken   string
+	currentCallId          string
+}
+
+func panicIf(condition bool) {
+	if condition {
+		panic("state invariant condition not met, this is a bug -- please report it as Github issue at https://github.com/f18m/ha-addon-voip-client/issues")
+	}
 }
 
 func NewVoipClientFSM(logger *logger.CustomLogger, baresipHandle *gobaresip.Baresip) *VoipClientFSM {
@@ -90,8 +106,55 @@ func (fsm *VoipClientFSM) GetCurrentState() FSMState {
 }
 
 func (fsm *VoipClientFSM) transitionTo(state FSMState) {
-	fsm.logger.InfoPkgf(logPrefix, "transitioning from state %s to %s", fsm.currentState.String(), state.String())
+	fsm.logger.InfoPkgf(logPrefix, "Transitioning from state %s to %s",
+		fsm.currentState.String(), state.String())
 	fsm.currentState = state
+
+	// ensure invariants for each state are respected:
+	switch state {
+	case WaitingInputs:
+		fsm.pendingAudioFileToPlay = ""
+		fsm.pendingAusrcCmdToken = ""
+		fsm.pendingCallCmdToken = ""
+		fsm.currentCallId = ""
+
+	case WaitForDialCmdResponse:
+		panicIf(fsm.pendingCallCmdToken == "")
+	}
+}
+
+func (fsm *VoipClientFSM) InitializeUserAgent(sip_uri, password string) error {
+	fsm.logger.InfoPkgf(logPrefix, "Initializing User Agent [%s]", sip_uri)
+
+	if fsm.currentState != Uninitialized {
+		fsm.logger.Warnf("FSM is not in the Uninitialized state, current state: %s. Ignoring initialization request.", fsm.currentState)
+		return ErrInvalidState
+	}
+
+	err := fsm.baresipHandle.Cmd("uanew", fmt.Sprintf("%s;auth_pass=%s", sip_uri, password), "uainit")
+	if err != nil {
+		fsm.logger.InfoPkgf(logPrefix, "Failed to create new SIP User Agent: %s", err)
+		return err
+	}
+
+	fsm.transitionTo(WaitingUserAgentRegistration)
+	return nil
+}
+
+func (fsm *VoipClientFSM) OnRegisterOk(event gobaresip.EventMsg) error {
+	fsm.logger.InfoPkgf(logPrefix, "Successful SIP REGISTER for : %s", event.AccountAOR)
+	fsm.registered = true
+	fsm.transitionTo(WaitingInputs)
+	return nil
+}
+
+func (fsm *VoipClientFSM) OnRegisterFail(event gobaresip.EventMsg) error {
+	fsm.logger.InfoPkgf(logPrefix, "Failed SIP REGISTER for : %s", event.AccountAOR)
+	fsm.registered = false
+
+	// in this state any communication will fail... go back to the initial state
+	fsm.transitionTo(WaitingUserAgentRegistration)
+	return nil
 }
 
 func (fsm *VoipClientFSM) OnNewOutgoingCallRequest(newRequest httpserver.Payload) error {
@@ -188,11 +251,19 @@ func (fsm *VoipClientFSM) OnCallEstablished(event gobaresip.EventMsg) error {
 func (fsm *VoipClientFSM) OnCallClosed(event gobaresip.EventMsg) error {
 	fsm.logger.InfoPkgf(logPrefix, "Received call closed event for Peer URI: %s", event.PeerURI)
 
-	if fsm.currentState != WaitForCallCompletion {
-		fsm.logger.Warnf("FSM is not in the WaitForCallCompletion state, current state: %s. Ignoring new request.", fsm.currentState)
+	if fsm.currentState == WaitingInputs {
+		fsm.logger.Warnf("FSM is not in a state where a call should be active, current state: %s. This is a bug.", fsm.currentState)
 		return ErrInvalidState
 	}
 
+	if fsm.currentCallId != "" &&
+		fsm.currentCallId != event.ID {
+		fsm.logger.Warnf("Received call closed event for a different call ID (%s), expected %s. This is a bug.",
+			event.ID, fsm.currentCallId)
+		return ErrInvalidState
+	}
+
+	fsm.logger.InfoPkgf(logPrefix, "Aborting any operation in progress since the call %s has ended...", event.ID)
 	fsm.transitionTo(WaitingInputs)
 
 	return nil
