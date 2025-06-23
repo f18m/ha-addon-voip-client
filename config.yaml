@@ -26,6 +26,13 @@ image: ghcr.io/f18m/{arch}-addon-voip-client
 # init false because this addon uses s6-overlay
 init: false
 
+map:
+# map an host directory to the addon container, so that the addon can save permanently (as cache)
+# the audio files obtained from TTS
+  - type: share
+    read_only: false
+    path: /share/voip-client
+
 # no UI for now:
 # enable the ingress feature for this addon, see https://developers.home-assistant.io/docs/add-ons/presentation#ingress
 #ingress: true

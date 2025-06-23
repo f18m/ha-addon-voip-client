@@ -7,9 +7,11 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 )
 
 const ttsUrl = "http://hassio/homeassistant/api/tts_get_url"
+const ttsDlPath = "/share/voip-client"
 
 type TTSService struct {
 	platform string
@@ -30,7 +32,7 @@ func NewTTSService(platform string) *TTSService {
 	}
 }
 
-func (t *TTSService) GetTTSURL(message string) (*TTSResponsePayload, error) {
+func (t *TTSService) getTTSURL(message string) (*TTSResponsePayload, error) {
 
 	hassioToken := os.Getenv("HASSIO_TOKEN")
 	if hassioToken == "" {
@@ -80,4 +82,44 @@ func (t *TTSService) GetTTSURL(message string) (*TTSResponsePayload, error) {
 	}
 
 	return &responsePayload, nil
+}
+
+func (t *TTSService) downloadAudioFile(url string) error {
+	// Get the data
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	// Create the file
+	out, err := os.Create(filepath.Join(ttsDlPath, "audio.mp3")) // fixed file name for now
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	// Write the body to file
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (t *TTSService) GetAudioFile(message string) (string, error) {
+	// Get the TTS URL
+	responsePayload, err := t.getTTSURL(message)
+	if err != nil {
+		return "", fmt.Errorf("error getting TTS URL: %v", err)
+	}
+
+	// Download the audio file
+	err = t.downloadAudioFile(responsePayload.URL)
+	if err != nil {
+		return "", fmt.Errorf("error downloading audio file: %v", err)
+	}
+
+	return filepath.Join(ttsDlPath, "audio.mp3"), nil // return the path to the downloaded file
 }
