@@ -13,8 +13,9 @@ import (
 const (
 	WaitingInputs = iota
 	LaunchTTSAndWait
-	WaitForCallEstablishment
 	WaitForDialCmdResponse
+	WaitForCallEstablishment
+	WaitForAusrcCmdResponse
 	WaitForCallCompletion
 )
 
@@ -24,7 +25,10 @@ type VoipClientFSM struct {
 	currentState  int
 	// channels for communication with the Baresip instance
 
-	numDialCmds int
+	numDialCmds            int
+	pendingAudioFileToPlay string
+	pendingCallCmdToken    string
+	pendingAusrcCmdToken   string
 }
 
 func NewVoipClientFSM(logger *logger.CustomLogger, baresipHandle *gobaresip.Baresip) *VoipClientFSM {
@@ -56,9 +60,12 @@ func (fsm *VoipClientFSM) OnNewOutgoingCallRequest(newRequest httpserver.Payload
 
 	// fsm.transitionTo(LaunchCallAndWaitForEstabilishment)
 
+	fsm.pendingAudioFileToPlay = "/usr/share/baresip/test-message.wav"
+
 	// Dial a new call
 	fsm.numDialCmds++
-	err := fsm.baresipHandle.Cmd("dial", newRequest.CalledNumber, fmt.Sprintf("dial_cmd_%d", fsm.numDialCmds))
+	fsm.pendingCallCmdToken = fmt.Sprintf("dial_cmd_%d", fsm.numDialCmds)
+	err := fsm.baresipHandle.Cmd("dial", newRequest.CalledNumber, fsm.pendingCallCmdToken)
 	if err != nil {
 		fsm.logger.Infof("Error dialing: %s", err)
 		fsm.transitionTo(WaitingInputs)
@@ -72,24 +79,39 @@ func (fsm *VoipClientFSM) OnNewOutgoingCallRequest(newRequest httpserver.Payload
 func (fsm *VoipClientFSM) OnBaresipCmdResponse(response gobaresip.ResponseMsg) error {
 	fsm.logger.Infof("Received baresip response: %+v", response)
 
-	if fsm.currentState != WaitForDialCmdResponse {
-		fsm.logger.Warnf("FSM is not in the WaitForDialCmdResponse state, current state: %d. Ignoring new request.", fsm.currentState)
+	switch fsm.currentState {
+	case WaitForDialCmdResponse:
+		if response.Token != fsm.pendingCallCmdToken {
+			fsm.logger.Warnf("Unexpected response token %s; was waiting for token %s", response.Token, fsm.pendingCallCmdToken)
+			return errors.New("unexpected response token")
+		}
+
+		if !response.Ok {
+			fsm.logger.Warnf("Baresip failed to initiate the new call: %s. Going back into WaitingInputs", response.Data)
+			fsm.transitionTo(WaitingInputs)
+			return nil
+		}
+
+		fsm.transitionTo(WaitForCallEstablishment)
+
+	case WaitForAusrcCmdResponse:
+		if response.Token != fsm.pendingAusrcCmdToken {
+			fsm.logger.Warnf("Unexpected response token %s; was waiting for token %s", response.Token, fsm.pendingAusrcCmdToken)
+			return errors.New("unexpected response token")
+		}
+
+		if !response.Ok {
+			fsm.logger.Warnf("Baresip failed to setup the right audio: %s...", response.Data)
+			// fsm.transitionTo(WaitingInputs)
+			// return nil
+		}
+
+		fsm.transitionTo(WaitForCallCompletion)
+
+	default:
+		fsm.logger.Warnf("FSM is not in a WaitForCmdResponse state, current state: %d. Ignoring new request.", fsm.currentState)
 		return ErrInvalidState
 	}
-
-	expectedToken := fmt.Sprintf("dial_cmd_%d", fsm.numDialCmds)
-	if response.Token != expectedToken {
-		fsm.logger.Warnf("Unexpected response token %s; was waiting for token %s", response.Token, expectedToken)
-		return errors.New("unexpected response token")
-	}
-
-	if !response.Ok {
-		fsm.logger.Warnf("Baresip failed to initiate the new call: %s. Going back into WaitingInputs", response.Data)
-		fsm.transitionTo(WaitingInputs)
-		return nil
-	}
-
-	fsm.transitionTo(WaitForCallEstablishment)
 
 	return nil
 }
@@ -102,10 +124,15 @@ func (fsm *VoipClientFSM) OnCallEstablished(event gobaresip.EventMsg) error {
 		return ErrInvalidState
 	}
 
-	// TODO: set the ausrc to "aufile" and play the TTS-generated WAV file
+	fsm.pendingAusrcCmdToken = fmt.Sprintf("ausrc_cmd_%d", fsm.numDialCmds)
+	err := fsm.baresipHandle.Cmd("ausrc", fmt.Sprintf("aufile,%s", fsm.pendingAudioFileToPlay), fsm.pendingAusrcCmdToken)
+	if err != nil {
+		fsm.logger.Infof("Error setting audio source to the right file: %s", err)
+		fsm.transitionTo(WaitForCallCompletion)
+		return nil
+	}
 
-	fsm.transitionTo(WaitForCallCompletion)
-
+	fsm.transitionTo(WaitForAusrcCmdResponse)
 	return nil
 }
 
