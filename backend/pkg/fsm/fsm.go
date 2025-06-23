@@ -6,6 +6,7 @@ import (
 
 	"voip-client-backend/pkg/httpserver"
 	"voip-client-backend/pkg/logger"
+	"voip-client-backend/pkg/tts"
 
 	"github.com/f18m/go-baresip/pkg/gobaresip"
 )
@@ -74,6 +75,7 @@ const logPrefix = "fsm"
 type VoipClientFSM struct {
 	logger        *logger.CustomLogger
 	baresipHandle *gobaresip.Baresip
+	ttsService    *tts.TTSService
 
 	// main state machine state
 	currentState FSMState
@@ -94,11 +96,12 @@ func panicIf(condition bool) {
 	}
 }
 
-func NewVoipClientFSM(logger *logger.CustomLogger, baresipHandle *gobaresip.Baresip) *VoipClientFSM {
+func NewVoipClientFSM(logger *logger.CustomLogger, baresipHandle *gobaresip.Baresip, ttsService *tts.TTSService) *VoipClientFSM {
 	return &VoipClientFSM{
 		currentState:  Uninitialized, // initial state
 		logger:        logger,
 		baresipHandle: baresipHandle,
+		ttsService:    ttsService,
 	}
 }
 
@@ -168,25 +171,29 @@ func (fsm *VoipClientFSM) OnNewOutgoingCallRequest(newRequest httpserver.Payload
 		return ErrInvalidState
 	}
 
-	// TODO: ask TTS to generate the WAV file
+	// ask TTS to generate the WAV file and get its path
+	var err error
+	fsm.pendingAudioFileToPlay, err = fsm.ttsService.GetAudioFile(newRequest.MessageTTS)
+	if err != nil {
+		fsm.logger.InfoPkgf(logPrefix, "Error doing the Text-to-Speech: %s", err)
+		fsm.transitionTo(WaitingInputs)
+		return nil
+	}
 
-	// convert it using ffmpeg
-
+	// TODO: convert it using ffmpeg
 	// fsm.transitionTo(LaunchCallAndWaitForEstabilishment)
-
-	fsm.pendingAudioFileToPlay = "/usr/share/baresip/test-message.wav"
 
 	// Dial a new call
 	fsm.numDialCmds++
 	fsm.pendingCallCmdToken = fmt.Sprintf("dial_cmd_%d", fsm.numDialCmds)
-	err := fsm.baresipHandle.Cmd("dial", newRequest.CalledNumber, fsm.pendingCallCmdToken)
+	err = fsm.baresipHandle.Cmd("dial", newRequest.CalledNumber, fsm.pendingCallCmdToken)
 	if err != nil {
 		fsm.logger.InfoPkgf(logPrefix, "Error dialing: %s", err)
 		fsm.transitionTo(WaitingInputs)
+		return nil
 	}
 
 	fsm.transitionTo(WaitForDialCmdResponse)
-
 	return nil
 }
 

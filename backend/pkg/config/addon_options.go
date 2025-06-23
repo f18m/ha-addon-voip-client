@@ -15,6 +15,10 @@ type AddonOptions struct {
 		Password string `json:"password"`
 	} `json:"voip_provider"`
 
+	TTSEngine struct {
+		Platform string `json:"platform"`
+	} `json:"tts_engine"`
+
 	Contacts []struct {
 		Name string `json:"name"`
 		URI  string `json:"uri"`

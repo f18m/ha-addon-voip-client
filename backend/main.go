@@ -13,6 +13,7 @@ import (
 	"voip-client-backend/pkg/fsm"
 	"voip-client-backend/pkg/httpserver"
 	"voip-client-backend/pkg/logger"
+	"voip-client-backend/pkg/tts"
 
 	"github.com/f18m/go-baresip/pkg/gobaresip"
 )
@@ -58,6 +59,9 @@ func main() {
 		inputServer.ListenAndServe()
 	}()
 
+	// Init the TTS service
+	ttsService := tts.NewTTSService(cfg.TTSEngine.Platform)
+
 	// Process
 	// - BARESIP events: unsolicited messages from baresip, e.g. incoming calls, registrations, etc.
 	// - BARESIP responses: responses to commands sent to baresip, e.g. command results
@@ -67,7 +71,7 @@ func main() {
 	eChan := gb.GetEventChan()
 	rChan := gb.GetResponseChan()
 	iChan := inputServer.GetInputChannel()
-	fsmInstance := fsm.NewVoipClientFSM(logger, gb)
+	fsmInstance := fsm.NewVoipClientFSM(logger, gb, ttsService)
 
 	// Initiate
 

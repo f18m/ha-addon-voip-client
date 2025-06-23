@@ -2,16 +2,19 @@ package tts
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 const ttsUrl = "http://hassio/homeassistant/api/tts_get_url"
 const ttsDlPath = "/share/voip-client"
+const ttsHttpApiTimeout = 10 * time.Second
 
 type TTSService struct {
 	platform string
@@ -45,12 +48,15 @@ func (t *TTSService) getTTSURL(message string) (*TTSResponsePayload, error) {
 	}
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
-		return nil, fmt.Errorf("error marshalling payload: %v", err)
+		return nil, fmt.Errorf("error marshalling payload: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", ttsUrl, bytes.NewReader(payloadBytes))
+	ctx, cancelFn := context.WithTimeout(context.Background(), ttsHttpApiTimeout)
+	defer cancelFn()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ttsUrl, bytes.NewReader(payloadBytes))
 	if err != nil {
-		return nil, fmt.Errorf("error creating request: %v", err)
+		return nil, fmt.Errorf("error creating request: %w", err)
 	}
 
 	req.Header.Set("Authorization", "Bearer "+hassioToken)
@@ -59,13 +65,13 @@ func (t *TTSService) getTTSURL(message string) (*TTSResponsePayload, error) {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("error making request: %v", err)
+		return nil, fmt.Errorf("error making request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("error reading response body: %v", err)
+		return nil, fmt.Errorf("error reading response body: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -75,7 +81,7 @@ func (t *TTSService) getTTSURL(message string) (*TTSResponsePayload, error) {
 	var responsePayload TTSResponsePayload
 	err = json.Unmarshal(body, &responsePayload)
 	if err != nil {
-		return nil, fmt.Errorf("error unmarshalling response: %v", err)
+		return nil, fmt.Errorf("error unmarshalling response: %w", err)
 	}
 	if responsePayload.URL == "" {
 		return nil, fmt.Errorf("TTS service returned empty URL")
@@ -83,21 +89,34 @@ func (t *TTSService) getTTSURL(message string) (*TTSResponsePayload, error) {
 
 	return &responsePayload, nil
 }
-
 func (t *TTSService) downloadAudioFile(url string) error {
-	// Get the data
-	resp, err := http.Get(url)
+	// Create a custom HTTP client with timeouts
+	client := &http.Client{
+		Timeout: ttsHttpApiTimeout,
+	}
+
+	// Create a new request with context
+	ctx, cancel := context.WithTimeout(context.Background(), ttsHttpApiTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+
+	// Get the data
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
 
 	// Create the file
 	out, err := os.Create(filepath.Join(ttsDlPath, "audio.mp3")) // fixed file name for now
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 
 	// Write the body to file
 	_, err = io.Copy(out, resp.Body)
@@ -112,13 +131,13 @@ func (t *TTSService) GetAudioFile(message string) (string, error) {
 	// Get the TTS URL
 	responsePayload, err := t.getTTSURL(message)
 	if err != nil {
-		return "", fmt.Errorf("error getting TTS URL: %v", err)
+		return "", fmt.Errorf("error getting TTS URL: %w", err)
 	}
 
 	// Download the audio file
 	err = t.downloadAudioFile(responsePayload.URL)
 	if err != nil {
-		return "", fmt.Errorf("error downloading audio file: %v", err)
+		return "", fmt.Errorf("error downloading audio file: %w", err)
 	}
 
 	return filepath.Join(ttsDlPath, "audio.mp3"), nil // return the path to the downloaded file
