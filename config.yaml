@@ -17,6 +17,10 @@ arch:
   - aarch64
   - amd64
   - i386
+
+# homeassistant_api is true to allow the addon to use the Home Assistant TTS API
+homeassistant_api: true
+
 host_network: false
 image: ghcr.io/f18m/{arch}-addon-voip-client
 # init false because this addon uses s6-overlay
@@ -60,5 +64,5 @@ schema:
       #  <sip:user@domain;uri-params>
       uri: str
 
-# categorize this addon as a "system" addon
-startup: system
+# categorize this addon as a "application" addon
+startup: application
