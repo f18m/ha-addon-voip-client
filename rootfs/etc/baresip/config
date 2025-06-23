@@ -1,5 +1,8 @@
 #
-# baresip configuration for HA VOIP CLIENT
+# Baresip configuration for HomeAssistant VOIP CLIENT addon
+# See https://github.com/baresip/baresip/wiki/Configuration for reference
+#
+# Baresip Main config file
 #
 
 #------------------------------------------------------------------------------

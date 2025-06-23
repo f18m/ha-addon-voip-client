@@ -44,11 +44,21 @@ options:
     #username: "your-username"
     # the password to use for authentication with the VOIP provider
     password: "your-password"
+  contacts:
+    - name: "John Doe"
+      # the SIP URI of the contact, in the format
+      #  <sip:user@domain;uri-params>
+      uri: "<sip:johndoe@example.com>"
 schema:
   voip_provider:
     name: str
     account: str
     password: str
+  contacts:
+    - name: str
+      # the SIP URI of the contact, in the format
+      #  <sip:user@domain;uri-params>
+      uri: str
 
 # categorize this addon as a "system" addon
 startup: system

@@ -6,6 +6,7 @@
 
 ADDON_CONFIG="/data/options.json"
 BARESIP_ACCOUNTS="/etc/baresip/accounts"
+BARESIP_CONTACTS="/etc/baresip/contacts"
 
 # ==============================================================================
 # FUNCTIONS
@@ -23,5 +24,12 @@ tempio \
 
 log_info "Baresip accounts:"
 cat -n $BARESIP_ACCOUNTS
+
+tempio \
+    -conf ${ADDON_CONFIG} \
+    -template /usr/share/tempio/baresip-contacts.tmpl \
+    -out "${BARESIP_CONTACTS}"
+
+
 
 log_info "Successfully completed baresip configuration."
