@@ -5,8 +5,8 @@
 # HomeAssistant to that feature branch
 version: 0.1.0
 slug: voip-client
-name: voip-client
-description: A VOIP client based on Baresip
+name: VOIP Client
+description: A Voice-Over-IP client based on Baresip. Make and receive phone calls from Home assistant!
 url: https://github.com/f18m/ha-addon-voip-client/tree/main
 # advanced true means that the HA user can see this addon only if it's flagged as 'advanced' in the
 # Home Assistant UI
