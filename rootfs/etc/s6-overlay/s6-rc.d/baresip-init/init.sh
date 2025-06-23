@@ -30,6 +30,7 @@ tempio \
     -template /usr/share/tempio/baresip-contacts.tmpl \
     -out "${BARESIP_CONTACTS}"
 
-
+log_info "Baresip contacts:"
+cat -n $BARESIP_CONTACTS
 
 log_info "Successfully completed baresip configuration."
