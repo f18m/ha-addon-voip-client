@@ -24,10 +24,10 @@ call_hold_other_calls	yes
 call_accept		no
 
 # Audio
-#audio_path		/usr/share/baresip
-audio_player		pipewire
-#audio_source		pipewire
-audio_alert		pipewire
+audio_path		    /usr/share/baresip
+audio_player		none
+audio_source        aufile,/usr/share/baresip/test-message.wav
+audio_alert		    none
 #ausrc_srate		48000
 #auplay_srate		48000
 #ausrc_channels		0
@@ -42,7 +42,6 @@ audio_buffer		20-160		# ms
 audio_buffer_mode	fixed		# fixed, adaptive
 audio_silence		-35.0		# in [dB]
 audio_telev_pt		101		# payload type for telephone-event
-audio_play_after_estab  yes             
 
 # Video
 #video_source		v4l2,/dev/video0

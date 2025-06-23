@@ -29,7 +29,7 @@ func main() {
 	gb, err := gobaresip.New(
 		gobaresip.UseExternalBaresip(),
 		gobaresip.SetLogger(logger),
-		gobaresip.SetPingInterval(6*time.Second),
+		gobaresip.SetPingInterval(60*time.Second),
 	)
 	if err != nil {
 		logger.Fatalf("init error: %s", err)
