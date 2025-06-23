@@ -33,7 +33,9 @@ type VoipClientFSM struct {
 
 func NewVoipClientFSM(logger *logger.CustomLogger, baresipHandle *gobaresip.Baresip) *VoipClientFSM {
 	return &VoipClientFSM{
-		currentState: WaitingInputs,
+		currentState:  WaitingInputs,
+		logger:        logger,
+		baresipHandle: baresipHandle,
 	}
 }
 
