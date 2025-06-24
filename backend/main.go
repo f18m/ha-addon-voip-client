@@ -60,7 +60,7 @@ func main() {
 	}()
 
 	// Init the TTS service
-	ttsService := tts.NewTTSService(cfg.TTSEngine.Platform)
+	ttsService := tts.NewTTSService(logger, cfg.TTSEngine.Platform)
 
 	// Process
 	// - BARESIP events: unsolicited messages from baresip, e.g. incoming calls, registrations, etc.

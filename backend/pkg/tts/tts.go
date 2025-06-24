@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+	"voip-client-backend/pkg/logger"
 )
 
 const ttsUrl = "http://hassio/homeassistant/api/tts_get_url"
@@ -17,6 +18,7 @@ const ttsDlPath = "/share/voip-client"
 const ttsHttpApiTimeout = 10 * time.Second
 
 type TTSService struct {
+	logger   *logger.CustomLogger
 	platform string
 }
 
@@ -29,8 +31,9 @@ type TTSResponsePayload struct {
 	Path string `json:"path"`
 }
 
-func NewTTSService(platform string) *TTSService {
+func NewTTSService(logger *logger.CustomLogger, platform string) *TTSService {
 	return &TTSService{
+		logger:   logger,
 		platform: platform,
 	}
 }
@@ -54,6 +57,7 @@ func (t *TTSService) getTTSURL(message string) (*TTSResponsePayload, error) {
 	ctx, cancelFn := context.WithTimeout(context.Background(), ttsHttpApiTimeout)
 	defer cancelFn()
 
+	t.logger.InfoPkgf("tts", "Launching HTTP POST to the HomeAssistant TTS [%s] with payload [%s]", ttsUrl, payloadBytes)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ttsUrl, bytes.NewReader(payloadBytes))
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %w", err)
@@ -89,42 +93,44 @@ func (t *TTSService) getTTSURL(message string) (*TTSResponsePayload, error) {
 
 	return &responsePayload, nil
 }
-func (t *TTSService) downloadAudioFile(url string) error {
+func (t *TTSService) downloadAudioFile(url string) (string, error) {
 	// Create a custom HTTP client with timeouts
 	client := &http.Client{
 		Timeout: ttsHttpApiTimeout,
 	}
 
 	// Create a new request with context
+	t.logger.InfoPkgf("tts", "Launching HTTP GET to the HomeAssistant TTS to retrieve audio file [%s]", url)
 	ctx, cancel := context.WithTimeout(context.Background(), ttsHttpApiTimeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	// Get the data
 	resp, err := client.Do(req)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	// Create the file
-	out, err := os.Create(filepath.Join(ttsDlPath, "audio.mp3")) // fixed file name for now
+	outPath := filepath.Join(ttsDlPath, "audio.mp3") // FIXME: take the hash of the message and use it as filename
+	out, err := os.Create(outPath)                   //nolint:gosec
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer func() { _ = out.Close() }()
 
 	// Write the body to file
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	return nil
+	return outPath, nil
 }
 
 func (t *TTSService) GetAudioFile(message string) (string, error) {
@@ -135,10 +141,12 @@ func (t *TTSService) GetAudioFile(message string) (string, error) {
 	}
 
 	// Download the audio file
-	err = t.downloadAudioFile(responsePayload.URL)
-	if err != nil {
+	outPath, err2 := t.downloadAudioFile(responsePayload.URL)
+	if err2 != nil {
 		return "", fmt.Errorf("error downloading audio file: %w", err)
 	}
 
-	return filepath.Join(ttsDlPath, "audio.mp3"), nil // return the path to the downloaded file
+	t.logger.InfoPkgf("tts", "Successfully retrieved audio file and stored at [%s]", outPath)
+
+	return outPath, nil // return the path to the downloaded file
 }
