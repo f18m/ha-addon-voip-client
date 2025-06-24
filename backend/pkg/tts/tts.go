@@ -22,11 +22,17 @@ type TTSService struct {
 	platform string
 }
 
-type TTSRequestPayload struct {
-	Message  string `json:"message"`
-	Platform string `json:"platform"`
+// see https://www.home-assistant.io/integrations/tts/#rest-api
+type haTTSOptions struct {
+	PreferredFormat     string `json:"preferred_format"`
+	PreferredSampleRate string `json:"preferred_sample_rate"`
 }
-type TTSResponsePayload struct {
+type haTTSRequestPayload struct {
+	Message  string       `json:"message"`
+	Platform string       `json:"platform"`
+	Options  haTTSOptions `json:"options"`
+}
+type haTTSResponsePayload struct {
 	URL  string `json:"url"`
 	Path string `json:"path"`
 }
@@ -38,16 +44,20 @@ func NewTTSService(logger *logger.CustomLogger, platform string) *TTSService {
 	}
 }
 
-func (t *TTSService) getTTSURL(message string) (*TTSResponsePayload, error) {
+func (t *TTSService) getTTSURL(message string) (*haTTSResponsePayload, error) {
 
 	hassioToken := os.Getenv("HASSIO_TOKEN")
 	if hassioToken == "" {
 		return nil, fmt.Errorf("HASSIO_TOKEN environment variable is not set")
 	}
 
-	payload := TTSRequestPayload{
+	payload := haTTSRequestPayload{
 		Message:  message,
 		Platform: t.platform,
+		Options: haTTSOptions{
+			PreferredFormat:     "wav",
+			PreferredSampleRate: "8000",
+		},
 	}
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
@@ -82,7 +92,7 @@ func (t *TTSService) getTTSURL(message string) (*TTSResponsePayload, error) {
 		return nil, fmt.Errorf("error response from TTS service: %s", string(body))
 	}
 
-	var responsePayload TTSResponsePayload
+	var responsePayload haTTSResponsePayload
 	err = json.Unmarshal(body, &responsePayload)
 	if err != nil {
 		return nil, fmt.Errorf("error unmarshalling response: %w", err)

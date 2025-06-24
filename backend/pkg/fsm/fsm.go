@@ -149,7 +149,14 @@ func (fsm *VoipClientFSM) InitializeUserAgent(sip_uri, password string) error {
 func (fsm *VoipClientFSM) OnRegisterOk(event gobaresip.EventMsg) error {
 	fsm.logger.InfoPkgf(logPrefix, "Successful SIP REGISTER for: %s. This is good news. It means your 'voip_provider' addon configuration is valid and Baresip authenticated against your VOIP provider. Now calls can be made and can be received!", event.AccountAOR)
 	fsm.registered = true
-	fsm.transitionTo(WaitingInputs)
+
+	if fsm.currentState == WaitingUserAgentRegistration {
+		fsm.transitionTo(WaitingInputs)
+	}
+	//else: Baresip (as every SIP UA) will periodically re-attempt registration (typically every 1h);
+	//      when that happens this function gets invoked and it might even happen during an outgoing call;
+	//      in such (unlikely) case, remain in whatever state the FSM already is
+
 	return nil
 }
 
