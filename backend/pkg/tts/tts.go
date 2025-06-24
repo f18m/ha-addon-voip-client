@@ -23,9 +23,12 @@ type TTSService struct {
 }
 
 // see https://www.home-assistant.io/integrations/tts/#rest-api
+// and https://www.home-assistant.io/integrations/google_translate/
 type haTTSOptions struct {
-	PreferredFormat     string `json:"preferred_format"`
-	PreferredSampleRate string `json:"preferred_sample_rate"`
+	PreferredFormat         string `json:"preferred_format"`
+	PreferredSampleRate     string `json:"preferred_sample_rate"`
+	PreferredSampleChannels string `json:"preferred_sample_channels"`
+	PreferredSampleBytes    string `json:"preferred_sample_bytes"`
 }
 type haTTSRequestPayload struct {
 	Message  string       `json:"message"`
@@ -54,9 +57,16 @@ func (t *TTSService) getTTSURL(message string) (*haTTSResponsePayload, error) {
 	payload := haTTSRequestPayload{
 		Message:  message,
 		Platform: t.platform,
+
+		// The TTS options are dictated by Baresip which supports (via the "aufile" module)
+		// only the following specifications: monochannel, 8kHz, 16bit WAV
+		// If we had to do the conversion ourselves, using ffmpeg CLI utility it would be:
+		//  ffmpeg -i input.wav -ac 1 -ar 8000 -acodec pcm_s16le baresip-audio.wav
 		Options: haTTSOptions{
-			PreferredFormat:     "wav",
-			PreferredSampleRate: "8000",
+			PreferredFormat:         "wav",
+			PreferredSampleRate:     "8000",
+			PreferredSampleChannels: "1", // monochannel
+			PreferredSampleBytes:    "2", // 16bit audio sampling
 		},
 	}
 	payloadBytes, err := json.Marshal(payload)

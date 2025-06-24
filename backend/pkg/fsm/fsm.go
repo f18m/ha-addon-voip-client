@@ -12,26 +12,25 @@ import (
 )
 
 /*
----
-config:
+Visit https://www.mermaidchart.com/play
 
-	theme: redux
-
----
 flowchart TD
+    Uninitialized("Uninitialized")
+    WaitingUserAgentRegistration("WaitingUserAgentRegistration<br>Add SIP UA to Baresip, which will start registration")
+    WaitingInputs("WaitingInputs<br>Waiting for call requests from HA")
+    WaitForDialCmdResponse("WaitForDialCmdResponse<br>Send Baresip 'dial' command and wait")
+    WaitForCallEstablishment("WaitForCallEstablishment<br>Just wait")
+    WaitForAusrcCmdResponse("WaitForAusrcCmdResponse<br>Send Baresip the 'ausrc' command and wait")
+    WaitForCallCompletion("WaitForCallCompletion<br>")
 
-	    WaitingInputs
-		LaunchTTSAndWait
-		WaitForDialCmdResponse
-		WaitForCallEstablishment
-		WaitForAusrcCmdResponse
-		WaitForCallCompletion
+    Uninitialized -- Baresip TCP skt connected --> WaitingUserAgentRegistration
+    WaitingUserAgentRegistration -- Baresip Event: Register OK --> WaitingInputs
+    WaitingInputs --HTTP Call Request from HA --> WaitForDialCmdResponse
+    WaitForDialCmdResponse -- Baresip DIAL cmd response --> WaitForCallEstablishment
+    WaitForCallEstablishment -- Baresip call ESTABLISHED event --> WaitForAusrcCmdResponse
+    WaitForAusrcCmdResponse -- Baresip AUSRC cmd response --> WaitForCallCompletion
+    WaitForCallCompletion -- Baresip call CLOSED event --> WaitingInputs
 
-	    WaitingInputs --HTTP Call Request --> WaitForDialCmdResponse
-	    WaitForDialCmdResponse -- Baresip cmd response --> WaitForCallEstablishment
-	    WaitForCallEstablishment -- Baresip call event --> WaitForAusrcCmdResponse
-	    WaitForAusrcCmdResponse -- Baresip cmd response --> WaitForCallCompletion
-	    WaitForCallCompletion -- Baresip call event --> WaitingInputs
 */
 
 type FSMState int
@@ -40,7 +39,6 @@ const (
 	Uninitialized FSMState = iota + 1
 	WaitingUserAgentRegistration
 	WaitingInputs
-	LaunchTTSAndWait
 	WaitForDialCmdResponse
 	WaitForCallEstablishment
 	WaitForAusrcCmdResponse
@@ -55,8 +53,6 @@ func (s FSMState) String() string {
 		return "WaitingUserAgentRegistration"
 	case WaitingInputs:
 		return "WaitingInputs"
-	case LaunchTTSAndWait:
-		return "LaunchTTSAndWait"
 	case WaitForDialCmdResponse:
 		return "WaitForDialCmdResponse"
 	case WaitForCallEstablishment:
@@ -252,11 +248,28 @@ func (fsm *VoipClientFSM) OnBaresipCmdResponse(response gobaresip.ResponseMsg) e
 	return nil
 }
 
+func (fsm *VoipClientFSM) OnCallOutgoing(event gobaresip.EventMsg) error {
+	fsm.logger.InfoPkgf(logPrefix, "Received call outgoing for Peer URI: %s", event.PeerURI)
+
+	fsm.currentCallId = event.ID
+
+	// No need to transition into any new state... the call will progress autonomously either to CLOSE or ESTABLISHED statuses
+
+	return nil
+}
+
 func (fsm *VoipClientFSM) OnCallEstablished(event gobaresip.EventMsg) error {
 	fsm.logger.InfoPkgf(logPrefix, "Received call estabilished status update for Peer URI: %s", event.PeerURI)
 
 	if fsm.currentState != WaitForCallEstablishment {
 		fsm.logger.Warnf("FSM is not in the WaitForCallEstablishment state, current state: %s. Ignoring new request.", fsm.currentState)
+		return ErrInvalidState
+	}
+
+	if fsm.currentCallId != "" &&
+		fsm.currentCallId != event.ID {
+		fsm.logger.Warnf("Received call established event for a different call ID (%s), expected %s. This is a bug.",
+			event.ID, fsm.currentCallId)
 		return ErrInvalidState
 	}
 
@@ -269,6 +282,24 @@ func (fsm *VoipClientFSM) OnCallEstablished(event gobaresip.EventMsg) error {
 	}
 
 	fsm.transitionTo(WaitForAusrcCmdResponse)
+	return nil
+}
+
+func (fsm *VoipClientFSM) OnEndOfFile(event gobaresip.EventMsg) error {
+	fsm.logger.InfoPkgf(logPrefix, "Received end-of-file notification: %s", event.PeerURI)
+
+	if fsm.currentState != WaitForCallCompletion {
+		fsm.logger.Warnf("FSM is not in the WaitForCallCompletion state, current state: %s. Ignoring new request.", fsm.currentState)
+		return ErrInvalidState
+	}
+
+	// hang up the call!
+	err := fsm.baresipHandle.CmdHangup()
+	if err != nil {
+		fsm.logger.InfoPkgf(logPrefix, "Error hanging up the call: %s", err)
+		return nil
+	}
+
 	return nil
 }
 

@@ -103,11 +103,17 @@ func main() {
 				case gobaresip.UA_EVENT_REGISTER_FAIL:
 					_ = fsmInstance.OnRegisterFail(e)
 
+				case gobaresip.UA_EVENT_CALL_OUTGOING:
+					_ = fsmInstance.OnCallOutgoing(e)
+
 				case gobaresip.UA_EVENT_CALL_ESTABLISHED:
 					_ = fsmInstance.OnCallEstablished(e)
 
 				case gobaresip.UA_EVENT_CALL_CLOSED:
 					_ = fsmInstance.OnCallClosed(e)
+
+				case gobaresip.UA_EVENT_END_OF_FILE:
+					_ = fsmInstance.OnEndOfFile(e)
 
 				default:
 					logger.InfoPkgf(logPrefix, "Ignoring event type %s", e.Type)
