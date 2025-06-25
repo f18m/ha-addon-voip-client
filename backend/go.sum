@@ -1,7 +1,5 @@
-github.com/f18m/go-baresip v0.0.0-20250625091842-8c55cce50885 h1:Xj/F/boD+F0/ur0TJqER6529RMaKZw+lst2ENc8kUIM=
-github.com/f18m/go-baresip v0.0.0-20250625091842-8c55cce50885/go.mod h1:flYhOS7i83wdM/eIWD2LbUIPqnGQGqBYEnoSjH1AYZw=
-github.com/f18m/go-baresip v1.0.1 h1:l4HhDyzzCjel/cMmLAPQDQXos8jWgsPowRAtSDZ9psU=
-github.com/f18m/go-baresip v1.0.1/go.mod h1:flYhOS7i83wdM/eIWD2LbUIPqnGQGqBYEnoSjH1AYZw=
+github.com/f18m/go-baresip v1.0.2-0.20250625213818-6560dc17b46f h1:E8gauc9GpmkNH6HJ0i65VfoYYWjdyj0erwGX7C4NNqc=
+github.com/f18m/go-baresip v1.0.2-0.20250625213818-6560dc17b46f/go.mod h1:flYhOS7i83wdM/eIWD2LbUIPqnGQGqBYEnoSjH1AYZw=
 github.com/goccy/go-json v0.10.5 h1:Fq85nIqj+gXn/S5ahsiTlK3TmC85qgirsdTP/+DeaC4=
 github.com/goccy/go-json v0.10.5/go.mod h1:oq7eo15ShAhp70Anwd5lgX2pLfOS3QCiwU/PULtXL6M=
 github.com/markdingo/netstring v1.0.2 h1:FptMPZdF/1QbW4gf8oVB7qE1GtZf7DgM7wq5o+dtS8o=

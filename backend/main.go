@@ -54,7 +54,7 @@ func main() {
 	}()
 
 	// Run Input HTTP server
-	inputServer := httpserver.NewServer(logger)
+	inputServer := httpserver.NewServer(logger, cfg.Contacts)
 	go func() {
 		inputServer.ListenAndServe()
 	}()
@@ -71,6 +71,7 @@ func main() {
 	eChan := gb.GetEventChan()
 	iChan := inputServer.GetInputChannel()
 	fsmInstance := fsm.NewVoipClientFSM(logger, gb, ttsService)
+	statsTicker := time.NewTicker(cfg.GetStatsInterval())
 
 	// Initiate
 
@@ -117,6 +118,11 @@ func main() {
 				default:
 					logger.InfoPkgf(logPrefix, "Ignoring event type %s", e.Type)
 				}
+
+			case <-statsTicker.C:
+				// Publish baresip stats to the logger
+				stats := gb.GetStats()
+				logger.InfoPkgf(logPrefix, "Baresip client stats: %+v", stats)
 			}
 		}
 	}()

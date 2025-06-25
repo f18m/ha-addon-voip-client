@@ -4,7 +4,14 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"time"
 )
+
+// AddonContact provides the contact information for a user
+type AddonContact struct {
+	Name string `json:"name"`
+	URI  string `json:"uri"`
+}
 
 // AddonOptions contains the configuration provided by the user to the Home Assistant addon
 // in the HomeAssistant YAML editor
@@ -19,10 +26,15 @@ type AddonOptions struct {
 		Platform string `json:"platform"`
 	} `json:"tts_engine"`
 
-	Contacts []struct {
-		Name string `json:"name"`
-		URI  string `json:"uri"`
-	} `json:"contacts"`
+	Contacts []AddonContact `json:"contacts"`
+
+	Stats struct {
+		Interval string `json:"interval"`
+	} `json:"stats"`
+
+	HttpRESTServer struct {
+		Synchronous bool `json:"synchronous"`
+	} `json:"http_rest_server"`
 }
 
 // readAddonOptions reads the OPTIONS of this Home Assistant addon
@@ -49,4 +61,18 @@ func ReadAddonOptions() (*AddonOptions, error) {
 	}
 
 	return &o, nil
+}
+
+func (o *AddonOptions) GetStatsInterval() time.Duration {
+	if o.Stats.Interval == "" {
+		return 1 * time.Hour // default value
+	}
+
+	// parse the interval string, e.g. "10s", "1m", etc.
+	d, err := time.ParseDuration(o.Stats.Interval)
+	if err != nil {
+		return 1 * time.Hour // default value
+	}
+
+	return d
 }
