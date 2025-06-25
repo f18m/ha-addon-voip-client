@@ -47,6 +47,7 @@ func NewServer(logger *logger.CustomLogger, contacts []config.AddonContact) Http
 	mux.HandleFunc(dialEndpoint, func(w http.ResponseWriter, r *http.Request) {
 		// Only accept POST requests
 		if r.Method != http.MethodPost {
+			logger.InfoPkg(logPrefix, "Replying with HTTP 405: Only POST method is allowed")
 			http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
 			return
 		}
@@ -55,6 +56,7 @@ func NewServer(logger *logger.CustomLogger, contacts []config.AddonContact) Http
 		var payload DialPayload
 		err := json.NewDecoder(r.Body).Decode(&payload)
 		if err != nil {
+			logger.InfoPkg(logPrefix, "Replying with HTTP 400: invalid JSON payload")
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
