@@ -28,7 +28,7 @@ By doing so you should get to your HomeAssistant configuration page for addon di
 rest_command:
   # Configuration.yaml entry for VOIP client
   voip_client_call:
-    url: http://79957c2e-voip-client.local.hass.io
+    url: http://79957c2e-voip-client.local.hass.io/dial
     method: POST
     headers:
       accept: "application/json, text/html"
@@ -42,7 +42,7 @@ rest_command:
 
   # This second entry is useful when testing new features with the VOIP client BETA version
   voip_client_call_beta:
-    url: http://79957c2e-voip-client-beta.local.hass.io
+    url: http://79957c2e-voip-client-beta.local.hass.io/dial
     method: POST
     headers:
       accept: "application/json, text/html"

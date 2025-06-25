@@ -149,7 +149,7 @@ func (fsm *VoipClientFSM) OnRegisterFail(event gobaresip.EventMsg) error {
 	return nil
 }
 
-func (fsm *VoipClientFSM) OnNewOutgoingCallRequest(newRequest httpserver.Payload) error {
+func (fsm *VoipClientFSM) OnNewOutgoingCallRequest(newRequest httpserver.DialPayload) error {
 	fsm.logger.InfoPkgf(logPrefix, "Received new outgoing call request: %+v", newRequest)
 
 	if fsm.currentState != WaitingInputs {
@@ -162,7 +162,7 @@ func (fsm *VoipClientFSM) OnNewOutgoingCallRequest(newRequest httpserver.Payload
 	var err error
 	fsm.pendingAudioFileToPlay, err = fsm.ttsService.GetAudioFile(newRequest.MessageTTS)
 	if err != nil {
-		fsm.logger.InfoPkgf(logPrefix, "Error doing the Text-to-Speech: %s", err)
+		fsm.logger.InfoPkgf(logPrefix, "Error doing the Text-to-Speech conversion: %s", err)
 		fsm.transitionTo(WaitingInputs)
 		return nil
 	}

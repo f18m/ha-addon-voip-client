@@ -11,7 +11,7 @@ import (
 	"voip-client-backend/pkg/logger"
 )
 
-type Payload struct {
+type DialPayload struct {
 	CalledNumber  string `json:"called_number"`
 	CalledContact string `json:"called_contact"`
 	MessageTTS    string `json:"message_tts"`
@@ -21,7 +21,7 @@ type HttpServer struct {
 	logger           *logger.CustomLogger
 	server           *http.Server
 	contactLookupMap map[string]string // Maps contact names to their URIs
-	outCh            chan Payload
+	outCh            chan DialPayload
 }
 
 const logPrefix = "httpserver"
@@ -29,7 +29,7 @@ const logPrefix = "httpserver"
 func NewServer(logger *logger.CustomLogger, contacts []config.AddonContact) HttpServer {
 	h := HttpServer{
 		logger:           logger,
-		outCh:            make(chan Payload),
+		outCh:            make(chan DialPayload),
 		contactLookupMap: make(map[string]string),
 	}
 
@@ -43,7 +43,7 @@ func NewServer(logger *logger.CustomLogger, contacts []config.AddonContact) Http
 	mux := http.NewServeMux()
 
 	// Define the handler for the HTTP endpoint
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/dial", func(w http.ResponseWriter, r *http.Request) {
 		// Only accept POST requests
 		if r.Method != http.MethodPost {
 			http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
@@ -51,7 +51,7 @@ func NewServer(logger *logger.CustomLogger, contacts []config.AddonContact) Http
 		}
 
 		// Decode the JSON payload from the request body
-		var payload Payload
+		var payload DialPayload
 		err := json.NewDecoder(r.Body).Decode(&payload)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -136,6 +136,6 @@ func (h *HttpServer) ListenAndServe() {
 	}
 }
 
-func (h *HttpServer) GetInputChannel() chan Payload {
+func (h *HttpServer) GetInputChannel() chan DialPayload {
 	return h.outCh
 }
