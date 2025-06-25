@@ -8,13 +8,15 @@ bashio::log.info "Starting baresip..."
 ulimit -n 1024
 
 # NOTE: that the baresip-init service has already created the baresip accounts file
-# and the baresip config file, so we can just run baresip now.
+# and the baresip config file
 # Also note that we don't want/need baresip to run in daemon mode
-#
+# Options provided mean:
 # -f <path>        Config path
 # -c               Disable colored log
 # -v               Verbose debug
 # -a <software>    Specify SIP User-Agent string
 #
-exec baresip -f "${BARESIP_CONFIG_DIR}" -c -v -a "ha-addon-voip-client" < /dev/null
+# The output is piped through sed to prefix each line with "baresip: "
+# This is useful for debugging and log readability in Home Assistant addon logs
+exec baresip -f "${BARESIP_CONFIG_DIR}" -c -v -a "ha-addon-voip-client" < /dev/null | sed 's/^/baresip: /'
 

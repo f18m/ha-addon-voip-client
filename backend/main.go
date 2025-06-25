@@ -21,7 +21,7 @@ import (
 const logPrefix = "main"
 
 func main() {
-	logger := logger.NewCustomLogger("voip-client")
+	logger := logger.NewCustomLogger("backend")
 	logger.Info("VOIP client backend starting")
 
 	// Read our own config
@@ -34,7 +34,7 @@ func main() {
 	gb, err := gobaresip.New(
 		gobaresip.UseExternalBaresip(), // s6-overlay is running baresip in the background
 		gobaresip.SetLogger(logger),
-		gobaresip.SetPingInterval(60*time.Second),
+		gobaresip.SetPingInterval(1*time.Hour),
 	)
 	if err != nil {
 		logger.Fatalf("baresip init error: %s", err)
