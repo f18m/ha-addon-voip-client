@@ -32,10 +32,12 @@ rest_command:
     method: POST
     headers:
       accept: "application/json, text/html"
-    payload: >
-      '{"called_number":"{{ called_number }}","
-        "called_contact":"{{ called_contact}}","
-        "message_tts": "{{ message_tts }}" }'
+    payload: |
+      {
+        "called_number": "{{ called_number }}",
+        "called_contact": "{{ called_contact }}",
+        "message_tts": "{{ message_tts }}"
+      }
     content_type: "application/json; charset=utf-8"
 
   # This second entry is useful when testing new features with the VOIP client BETA version
@@ -44,12 +46,12 @@ rest_command:
     method: POST
     headers:
       accept: "application/json, text/html"
-    payload: >
-      '{
-        "called_number":"{{ called_number }}", 
-        "called_contact":"{{ called_contact}}", 
+    payload: |
+      {
+        "called_number": "{{ called_number }}",
+        "called_contact": "{{ called_contact }}",
         "message_tts": "{{ message_tts }}"
-      }'
+      }
     content_type: "application/json; charset=utf-8"
 ```
 

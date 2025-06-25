@@ -113,7 +113,7 @@ func NewServer(logger *logger.CustomLogger, contacts []config.AddonContact) Http
 		// w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = fmt.Fprintf(w, "Payload is valid. Initiating TTS generation and outgoing call.")
-		logger.InfoPkgf(logPrefix, "Payload is valid. Initiating TTS generation and outgoing call.")
+		logger.InfoPkgf(logPrefix, "Replying with HTTP 200: Payload is valid. Initiating TTS generation and outgoing call.")
 
 		// Send to the output channel
 		h.outCh <- payload
