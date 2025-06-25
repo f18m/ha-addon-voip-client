@@ -69,7 +69,7 @@ func main() {
 	// using a simple Finite State Machine (FSM) -- all business logic is implemented in the FSM
 	cChan := gb.GetConnectedChan()
 	eChan := gb.GetEventChan()
-	rChan := gb.GetResponseChan()
+	//rChan := gb.GetResponseChan()
 	iChan := inputServer.GetInputChannel()
 	fsmInstance := fsm.NewVoipClientFSM(logger, gb, ttsService)
 
@@ -118,13 +118,14 @@ func main() {
 				default:
 					logger.InfoPkgf(logPrefix, "Ignoring event type %s", e.Type)
 				}
-
-			case r, ok := <-rChan:
-				if !ok {
-					continue
-				}
-				// logger.Info("RESPONSE: " + string(r.RawJSON))
-				_ = fsmInstance.OnBaresipCmdResponse(r)
+				/*
+					case r, ok := <-rChan:
+						if !ok {
+							continue
+						}
+						// logger.Info("RESPONSE: " + string(r.RawJSON))
+						_ = fsmInstance.OnBaresipCmdResponse(r)
+				*/
 			}
 		}
 	}()

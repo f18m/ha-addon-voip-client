@@ -1,7 +1,6 @@
 package fsm
 
 import (
-	"errors"
 	"fmt"
 
 	"voip-client-backend/pkg/httpserver"
@@ -132,9 +131,17 @@ func (fsm *VoipClientFSM) InitializeUserAgent(sip_uri, password string) error {
 	}
 
 	fsm.pendingUaInitCmdToken = "uaregistration_token"
-	err := fsm.baresipHandle.Cmd("uanew", fmt.Sprintf("%s;auth_pass=%s", sip_uri, password), fsm.pendingUaInitCmdToken)
+	resp, err := fsm.baresipHandle.CmdTxWithAck(gobaresip.CommandMsg{
+		Command: "uanew",
+		Params:  fmt.Sprintf("%s;auth_pass=%s", sip_uri, password),
+		Token:   fsm.pendingUaInitCmdToken,
+	})
 	if err != nil {
 		fsm.logger.InfoPkgf(logPrefix, "Failed to create new SIP User Agent: %s", err)
+		return err
+	}
+	if !resp.Ok {
+		fsm.logger.InfoPkgf(logPrefix, "Failed to create new SIP User Agent: %+v", resp)
 		return err
 	}
 
@@ -183,23 +190,33 @@ func (fsm *VoipClientFSM) OnNewOutgoingCallRequest(newRequest httpserver.Payload
 		return nil
 	}
 
-	// TODO: convert it using ffmpeg
+	// TODO: detect if it's necessary to convert the audio file using ffmpeg -- right now Google Translate produces WAVs that Baresip can handle
 	// fsm.transitionTo(LaunchCallAndWaitForEstabilishment)
 
 	// Dial a new call
 	fsm.numDialCmds++
 	fsm.pendingCallCmdToken = fmt.Sprintf("dial_cmd_%d", fsm.numDialCmds)
-	err = fsm.baresipHandle.Cmd("dial", newRequest.CalledNumber, fsm.pendingCallCmdToken)
-	if err != nil {
-		fsm.logger.InfoPkgf(logPrefix, "Error dialing: %s", err)
+	resp, err2 := fsm.baresipHandle.CmdTxWithAck(gobaresip.CommandMsg{
+		Command: "dial",
+		Params:  newRequest.CalledNumber,
+		Token:   fsm.pendingCallCmdToken,
+	})
+	if err2 != nil {
+		fsm.logger.InfoPkgf(logPrefix, "Error dialing: %s", err2)
+		fsm.transitionTo(WaitingInputs)
+		return nil
+	}
+	if !resp.Ok {
+		fsm.logger.InfoPkgf(logPrefix, "Error dialing: %+v", resp)
 		fsm.transitionTo(WaitingInputs)
 		return nil
 	}
 
-	fsm.transitionTo(WaitForDialCmdResponse)
+	fsm.transitionTo(WaitForCallEstablishment)
 	return nil
 }
 
+/*
 func (fsm *VoipClientFSM) OnBaresipCmdResponse(response gobaresip.ResponseMsg) error {
 	fsm.logger.InfoPkgf(logPrefix, "Received baresip response with TOKEN: %s", response.Token)
 
@@ -247,6 +264,7 @@ func (fsm *VoipClientFSM) OnBaresipCmdResponse(response gobaresip.ResponseMsg) e
 
 	return nil
 }
+*/
 
 func (fsm *VoipClientFSM) OnCallOutgoing(event gobaresip.EventMsg) error {
 	fsm.logger.InfoPkgf(logPrefix, "Received call outgoing for Peer URI: %s", event.PeerURI)
@@ -274,14 +292,23 @@ func (fsm *VoipClientFSM) OnCallEstablished(event gobaresip.EventMsg) error {
 	}
 
 	fsm.pendingAusrcCmdToken = fmt.Sprintf("ausrc_cmd_%d", fsm.numDialCmds)
-	err := fsm.baresipHandle.Cmd("ausrc", fmt.Sprintf("aufile,%s", fsm.pendingAudioFileToPlay), fsm.pendingAusrcCmdToken)
+	resp, err := fsm.baresipHandle.CmdTxWithAck(gobaresip.CommandMsg{
+		Command: "ausrc",
+		Params:  fmt.Sprintf("aufile,%s", fsm.pendingAudioFileToPlay),
+		Token:   fsm.pendingAusrcCmdToken,
+	})
 	if err != nil {
 		fsm.logger.InfoPkgf(logPrefix, "Error setting audio source to the right file: %s", err)
 		fsm.transitionTo(WaitForCallCompletion)
 		return nil
 	}
+	if !resp.Ok {
+		fsm.logger.InfoPkgf(logPrefix, "Error setting audio source to the right file: %+v", resp)
+		fsm.transitionTo(WaitForCallCompletion)
+		return nil
+	}
 
-	fsm.transitionTo(WaitForAusrcCmdResponse)
+	fsm.transitionTo(WaitForCallCompletion)
 	return nil
 }
 
