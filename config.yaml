@@ -3,9 +3,9 @@
 # as reported by the Github Action workflow 'publish.yaml', so that you can force HomeAssistant
 # to use the docker image of that feature branch instead of the docker image of 'main', by pointing
 # HomeAssistant to that feature branch
-version: 0.2.0
-slug: voip-client
-name: VOIP Client
+version: beta
+slug: voip-client-beta
+name: VOIP Client BETA
 description: A Voice-Over-IP client based on Baresip. Make and receive phone calls from Home assistant!
 url: https://github.com/f18m/ha-addon-voip-client/tree/main
 # advanced true means that the HA user can see this addon only if it's flagged as 'advanced' in the
@@ -17,10 +17,21 @@ arch:
   - aarch64
   - amd64
   - i386
+
+# homeassistant_api is true to allow the addon to use the Home Assistant TTS API
+homeassistant_api: true
+
 host_network: false
 image: ghcr.io/f18m/{arch}-addon-voip-client
 # init false because this addon uses s6-overlay
 init: false
+
+map:
+# map an host directory to the addon container, so that the addon can save permanently (as cache)
+# the audio files obtained from TTS
+  - type: share
+    read_only: false
+    path: /share/voip-client
 
 # no UI for now:
 # enable the ingress feature for this addon, see https://developers.home-assistant.io/docs/add-ons/presentation#ingress
@@ -44,6 +55,8 @@ options:
     #username: "your-username"
     # the password to use for authentication with the VOIP provider
     password: "your-password"
+  tts_engine:
+    platform: google_translate
   contacts:
     - name: "John Doe"
       # the SIP URI of the contact, in the format
@@ -54,11 +67,13 @@ schema:
     name: str
     account: str
     password: str
+  tts_engine:
+    platform: str
   contacts:
     - name: str
       # the SIP URI of the contact, in the format
       #  <sip:user@domain;uri-params>
       uri: str
 
-# categorize this addon as a "system" addon
-startup: system
+# categorize this addon as a "application" addon
+startup: application

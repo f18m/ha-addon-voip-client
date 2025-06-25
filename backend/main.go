@@ -13,6 +13,7 @@ import (
 	"voip-client-backend/pkg/fsm"
 	"voip-client-backend/pkg/httpserver"
 	"voip-client-backend/pkg/logger"
+	"voip-client-backend/pkg/tts"
 
 	"github.com/f18m/go-baresip/pkg/gobaresip"
 )
@@ -58,16 +59,18 @@ func main() {
 		inputServer.ListenAndServe()
 	}()
 
+	// Init the TTS service
+	ttsService := tts.NewTTSService(logger, cfg.TTSEngine.Platform)
+
 	// Process
+	// - BARESIP connected event: TCP socket connected
 	// - BARESIP events: unsolicited messages from baresip, e.g. incoming calls, registrations, etc.
-	// - BARESIP responses: responses to commands sent to baresip, e.g. command results
 	// - INPUT HTTP requests: messages coming from HomeAssistant via the HTTP server
 	// using a simple Finite State Machine (FSM) -- all business logic is implemented in the FSM
 	cChan := gb.GetConnectedChan()
 	eChan := gb.GetEventChan()
-	rChan := gb.GetResponseChan()
 	iChan := inputServer.GetInputChannel()
-	fsmInstance := fsm.NewVoipClientFSM(logger, gb)
+	fsmInstance := fsm.NewVoipClientFSM(logger, gb, ttsService)
 
 	// Initiate
 
@@ -99,22 +102,21 @@ func main() {
 				case gobaresip.UA_EVENT_REGISTER_FAIL:
 					_ = fsmInstance.OnRegisterFail(e)
 
+				case gobaresip.UA_EVENT_CALL_OUTGOING:
+					_ = fsmInstance.OnCallOutgoing(e)
+
 				case gobaresip.UA_EVENT_CALL_ESTABLISHED:
 					_ = fsmInstance.OnCallEstablished(e)
 
 				case gobaresip.UA_EVENT_CALL_CLOSED:
 					_ = fsmInstance.OnCallClosed(e)
 
+				case gobaresip.UA_EVENT_END_OF_FILE:
+					_ = fsmInstance.OnEndOfFile(e)
+
 				default:
 					logger.InfoPkgf(logPrefix, "Ignoring event type %s", e.Type)
 				}
-
-			case r, ok := <-rChan:
-				if !ok {
-					continue
-				}
-				// logger.Info("RESPONSE: " + string(r.RawJSON))
-				_ = fsmInstance.OnBaresipCmdResponse(r)
 			}
 		}
 	}()
