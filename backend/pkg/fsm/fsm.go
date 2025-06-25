@@ -17,18 +17,15 @@ flowchart TD
     Uninitialized("Uninitialized")
     WaitingUserAgentRegistration("WaitingUserAgentRegistration<br>Add SIP UA to Baresip, which will start registration")
     WaitingInputs("WaitingInputs<br>Waiting for call requests from HA")
-    WaitForDialCmdResponse("WaitForDialCmdResponse<br>Send Baresip 'dial' command and wait")
-    WaitForCallEstablishment("WaitForCallEstablishment<br>Just wait")
-    WaitForAusrcCmdResponse("WaitForAusrcCmdResponse<br>Send Baresip the 'ausrc' command and wait")
-    WaitForCallCompletion("WaitForCallCompletion<br>")
+    WaitForCallEstablishment("WaitForCallEstablishment<br>Run the TTS engine to produce a WAV file. Ask baresip to start the call, then wait")
+    WaitForCallCompletion("WaitForCallCompletion<br>Ask baresip to reproduce the TTS message")
 
     Uninitialized -- Baresip TCP skt connected --> WaitingUserAgentRegistration
     WaitingUserAgentRegistration -- Baresip Event: Register OK --> WaitingInputs
-    WaitingInputs --HTTP Call Request from HA --> WaitForDialCmdResponse
-    WaitForDialCmdResponse -- Baresip DIAL cmd response --> WaitForCallEstablishment
-    WaitForCallEstablishment -- Baresip call ESTABLISHED event --> WaitForAusrcCmdResponse
-    WaitForAusrcCmdResponse -- Baresip AUSRC cmd response --> WaitForCallCompletion
+    WaitingInputs --HTTP Call Request from HA --> WaitForCallEstablishment
+    WaitForCallEstablishment -- Baresip call ESTABLISHED event --> WaitForCallCompletion
     WaitForCallCompletion -- Baresip call CLOSED event --> WaitingInputs
+    WaitForCallCompletion -- Baresip End-of-File event (send hangup command) --> WaitingInputs
 
 */
 
@@ -38,9 +35,7 @@ const (
 	Uninitialized FSMState = iota + 1
 	WaitingUserAgentRegistration
 	WaitingInputs
-	WaitForDialCmdResponse
 	WaitForCallEstablishment
-	WaitForAusrcCmdResponse
 	WaitForCallCompletion
 )
 
@@ -52,12 +47,8 @@ func (s FSMState) String() string {
 		return "WaitingUserAgentRegistration"
 	case WaitingInputs:
 		return "WaitingInputs"
-	case WaitForDialCmdResponse:
-		return "WaitForDialCmdResponse"
 	case WaitForCallEstablishment:
 		return "WaitForCallEstablishment"
-	case WaitForAusrcCmdResponse:
-		return "WaitForAusrcCmdResponse"
 	case WaitForCallCompletion:
 		return "WaitForCallCompletion"
 	default:
@@ -78,18 +69,17 @@ type VoipClientFSM struct {
 	// secondary state variables
 	registered             bool
 	numDialCmds            int
-	pendingUaInitCmdToken  string
 	pendingAudioFileToPlay string
-	pendingCallCmdToken    string
-	pendingAusrcCmdToken   string
 	currentCallId          string
 }
 
+/*
 func panicIf(condition bool) {
 	if condition {
 		panic("state invariant condition not met, this is a bug -- please report it as Github issue at https://github.com/f18m/ha-addon-voip-client/issues")
 	}
 }
+*/
 
 func NewVoipClientFSM(logger *logger.CustomLogger, baresipHandle *gobaresip.Baresip, ttsService *tts.TTSService) *VoipClientFSM {
 	return &VoipClientFSM{
@@ -110,15 +100,9 @@ func (fsm *VoipClientFSM) transitionTo(state FSMState) {
 	fsm.currentState = state
 
 	// ensure invariants for each state are respected:
-	switch state {
-	case WaitingInputs:
+	if state == WaitingInputs {
 		fsm.pendingAudioFileToPlay = ""
-		fsm.pendingAusrcCmdToken = ""
-		fsm.pendingCallCmdToken = ""
 		fsm.currentCallId = ""
-
-	case WaitForDialCmdResponse:
-		panicIf(fsm.pendingCallCmdToken == "")
 	}
 }
 
@@ -130,21 +114,14 @@ func (fsm *VoipClientFSM) InitializeUserAgent(sip_uri, password string) error {
 		return ErrInvalidState
 	}
 
-	fsm.pendingUaInitCmdToken = "uaregistration_token"
-	resp, err := fsm.baresipHandle.CmdTxWithAck(gobaresip.CommandMsg{
+	_, err := fsm.baresipHandle.CmdTxWithAck(gobaresip.CommandMsg{
 		Command: "uanew",
 		Params:  fmt.Sprintf("%s;auth_pass=%s", sip_uri, password),
-		Token:   fsm.pendingUaInitCmdToken,
 	})
 	if err != nil {
 		fsm.logger.InfoPkgf(logPrefix, "Failed to create new SIP User Agent: %s", err)
 		return err
 	}
-	if !resp.Ok {
-		fsm.logger.InfoPkgf(logPrefix, "Failed to create new SIP User Agent: %+v", resp)
-		return err
-	}
-
 	fsm.transitionTo(WaitingUserAgentRegistration)
 	return nil
 }
@@ -191,80 +168,21 @@ func (fsm *VoipClientFSM) OnNewOutgoingCallRequest(newRequest httpserver.Payload
 	}
 
 	// TODO: detect if it's necessary to convert the audio file using ffmpeg -- right now Google Translate produces WAVs that Baresip can handle
-	// fsm.transitionTo(LaunchCallAndWaitForEstabilishment)
 
 	// Dial a new call
 	fsm.numDialCmds++
-	fsm.pendingCallCmdToken = fmt.Sprintf("dial_cmd_%d", fsm.numDialCmds)
-	resp, err2 := fsm.baresipHandle.CmdTxWithAck(gobaresip.CommandMsg{
+	_, err2 := fsm.baresipHandle.CmdTxWithAck(gobaresip.CommandMsg{
 		Command: "dial",
 		Params:  newRequest.CalledNumber,
-		Token:   fsm.pendingCallCmdToken,
 	})
 	if err2 != nil {
 		fsm.logger.InfoPkgf(logPrefix, "Error dialing: %s", err2)
 		fsm.transitionTo(WaitingInputs)
 		return nil
 	}
-	if !resp.Ok {
-		fsm.logger.InfoPkgf(logPrefix, "Error dialing: %+v", resp)
-		fsm.transitionTo(WaitingInputs)
-		return nil
-	}
-
 	fsm.transitionTo(WaitForCallEstablishment)
 	return nil
 }
-
-/*
-func (fsm *VoipClientFSM) OnBaresipCmdResponse(response gobaresip.ResponseMsg) error {
-	fsm.logger.InfoPkgf(logPrefix, "Received baresip response with TOKEN: %s", response.Token)
-
-	switch fsm.currentState {
-	case WaitingUserAgentRegistration:
-		if response.Token != fsm.pendingUaInitCmdToken {
-			fsm.logger.Warnf("Unexpected response token %s; was waiting for token %s", response.Token, fsm.pendingUaInitCmdToken)
-			return errors.New("unexpected response token")
-		}
-
-		// no state transition... wait for the REGISTER OK or REGISTER FAIL events...
-
-	case WaitForDialCmdResponse:
-		if response.Token != fsm.pendingCallCmdToken {
-			fsm.logger.Warnf("Unexpected response token %s; was waiting for token %s", response.Token, fsm.pendingCallCmdToken)
-			return errors.New("unexpected response token")
-		}
-
-		if !response.Ok {
-			fsm.logger.Warnf("Baresip failed to initiate the new call: %s. Going back into WaitingInputs", response.Data)
-			fsm.transitionTo(WaitingInputs)
-			return nil
-		}
-
-		fsm.transitionTo(WaitForCallEstablishment)
-
-	case WaitForAusrcCmdResponse:
-		if response.Token != fsm.pendingAusrcCmdToken {
-			fsm.logger.Warnf("Unexpected response token %s; was waiting for token %s", response.Token, fsm.pendingAusrcCmdToken)
-			return errors.New("unexpected response token")
-		}
-
-		if !response.Ok {
-			fsm.logger.Warnf("Baresip failed to setup the right audio: %s...", response.Data)
-			// fsm.transitionTo(WaitingInputs)
-			// return nil
-		}
-
-		fsm.transitionTo(WaitForCallCompletion)
-
-	default:
-		fsm.logger.Warnf("FSM is not in a WaitForCmdResponse state, current state: %s. Ignoring new request.", fsm.currentState)
-		return ErrInvalidState
-	}
-
-	return nil
-}
-*/
 
 func (fsm *VoipClientFSM) OnCallOutgoing(event gobaresip.EventMsg) error {
 	fsm.logger.InfoPkgf(logPrefix, "Received call outgoing for Peer URI: %s", event.PeerURI)
@@ -291,19 +209,12 @@ func (fsm *VoipClientFSM) OnCallEstablished(event gobaresip.EventMsg) error {
 		return ErrInvalidState
 	}
 
-	fsm.pendingAusrcCmdToken = fmt.Sprintf("ausrc_cmd_%d", fsm.numDialCmds)
-	resp, err := fsm.baresipHandle.CmdTxWithAck(gobaresip.CommandMsg{
+	_, err := fsm.baresipHandle.CmdTxWithAck(gobaresip.CommandMsg{
 		Command: "ausrc",
 		Params:  fmt.Sprintf("aufile,%s", fsm.pendingAudioFileToPlay),
-		Token:   fsm.pendingAusrcCmdToken,
 	})
 	if err != nil {
 		fsm.logger.InfoPkgf(logPrefix, "Error setting audio source to the right file: %s", err)
-		fsm.transitionTo(WaitForCallCompletion)
-		return nil
-	}
-	if !resp.Ok {
-		fsm.logger.InfoPkgf(logPrefix, "Error setting audio source to the right file: %+v", resp)
 		fsm.transitionTo(WaitForCallCompletion)
 		return nil
 	}
@@ -321,7 +232,7 @@ func (fsm *VoipClientFSM) OnEndOfFile(event gobaresip.EventMsg) error {
 	}
 
 	// hang up the call!
-	err := fsm.baresipHandle.CmdHangup()
+	_, err := fsm.baresipHandle.CmdHangup()
 	if err != nil {
 		fsm.logger.InfoPkgf(logPrefix, "Error hanging up the call: %s", err)
 		return nil

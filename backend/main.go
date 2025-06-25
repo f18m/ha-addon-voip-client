@@ -63,13 +63,12 @@ func main() {
 	ttsService := tts.NewTTSService(logger, cfg.TTSEngine.Platform)
 
 	// Process
+	// - BARESIP connected event: TCP socket connected
 	// - BARESIP events: unsolicited messages from baresip, e.g. incoming calls, registrations, etc.
-	// - BARESIP responses: responses to commands sent to baresip, e.g. command results
 	// - INPUT HTTP requests: messages coming from HomeAssistant via the HTTP server
 	// using a simple Finite State Machine (FSM) -- all business logic is implemented in the FSM
 	cChan := gb.GetConnectedChan()
 	eChan := gb.GetEventChan()
-	// rChan := gb.GetResponseChan()
 	iChan := inputServer.GetInputChannel()
 	fsmInstance := fsm.NewVoipClientFSM(logger, gb, ttsService)
 
@@ -118,14 +117,6 @@ func main() {
 				default:
 					logger.InfoPkgf(logPrefix, "Ignoring event type %s", e.Type)
 				}
-				/*
-					case r, ok := <-rChan:
-						if !ok {
-							continue
-						}
-						// logger.Info("RESPONSE: " + string(r.RawJSON))
-						_ = fsmInstance.OnBaresipCmdResponse(r)
-				*/
 			}
 		}
 	}()
