@@ -25,6 +25,7 @@ type HttpServer struct {
 }
 
 const logPrefix = "httpserver"
+const dialEndpoint = "/dial"
 
 func NewServer(logger *logger.CustomLogger, contacts []config.AddonContact) HttpServer {
 	h := HttpServer{
@@ -43,7 +44,7 @@ func NewServer(logger *logger.CustomLogger, contacts []config.AddonContact) Http
 	mux := http.NewServeMux()
 
 	// Define the handler for the HTTP endpoint
-	mux.HandleFunc("/dial", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(dialEndpoint, func(w http.ResponseWriter, r *http.Request) {
 		// Only accept POST requests
 		if r.Method != http.MethodPost {
 			http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
@@ -130,7 +131,7 @@ func NewServer(logger *logger.CustomLogger, contacts []config.AddonContact) Http
 }
 
 func (h *HttpServer) ListenAndServe() {
-	h.logger.InfoPkgf(logPrefix, "Server listening on %s", h.server.Addr)
+	h.logger.InfoPkgf(logPrefix, "Server listening on %s, paths: %s", h.server.Addr, dialEndpoint)
 	if err := h.server.ListenAndServe(); err != nil {
 		h.logger.Fatalf("Failed to start server: %s", err)
 	}
