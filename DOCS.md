@@ -32,7 +32,7 @@ rest_command:
     method: POST
     headers:
       accept: "application/json, text/html"
-    payload:
+    payload: >
       '{
         "called_number":"{{ called_number }}", 
         "called_contact":"{{ called_contact}}", 
@@ -46,7 +46,7 @@ rest_command:
     method: POST
     headers:
       accept: "application/json, text/html"
-    payload:
+    payload: >
       '{
         "called_number":"{{ called_number }}", 
         "called_contact":"{{ called_contact}}", 
@@ -80,4 +80,17 @@ automation:
 Make sure you use for the `called_number` the [SIP URI](https://en.wikipedia.org/wiki/SIP_URI_scheme) format
 accepted by your VOIP provider.
 Alternatively you can use the `called_contact` field and provide exactly the same contact `name` of a contact
-listed in the addon configuration
+listed in the addon configuration:
+
+```yaml
+automation:
+- alias: "Notify to Cellphone"
+  triggers:
+    - trigger: state
+      ... <some trigger you like> ...
+  actions:
+    - action: rest_command.voip_client_call
+      data:
+        called_contact: "John Doe"
+        message_tts: "Just a test"
+```

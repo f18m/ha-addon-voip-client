@@ -59,18 +59,22 @@ func NewServer(logger *logger.CustomLogger, contacts []config.AddonContact) Http
 		}
 
 		// Log the received payload
-		logger.InfoPkgf(logPrefix, "Received payload: CalledNumber=%s, MessageTTS=%s\n", payload.CalledNumber, payload.MessageTTS)
+		logger.InfoPkgf(logPrefix, "Received payload: CalledNumber=%s, CalledContact=%s, MessageTTS=%s\n",
+			payload.CalledNumber, payload.CalledContact, payload.MessageTTS)
 
 		// Validate it
 		if payload.CalledNumber == "" && payload.CalledContact == "" {
-			http.Error(w, "CalledNumber or CalledContact are required", http.StatusBadRequest)
+			logger.InfoPkg(logPrefix, "Replying with HTTP 400: CalledNumber or CalledContact is required")
+			http.Error(w, "CalledNumber or CalledContact is required", http.StatusBadRequest)
 			return
 		}
 		if payload.CalledNumber != "" && payload.CalledContact != "" {
+			logger.InfoPkg(logPrefix, "Replying with HTTP 400: Only one between CalledNumber and CalledContact can be provided")
 			http.Error(w, "Only one between CalledNumber and CalledContact can be provided", http.StatusBadRequest)
 			return
 		}
 		if payload.MessageTTS == "" {
+			logger.InfoPkg(logPrefix, "Replying with HTTP 400: MessageTTS is required")
 			http.Error(w, "MessageTTS is required", http.StatusBadRequest)
 			return
 		}
@@ -79,10 +83,12 @@ func NewServer(logger *logger.CustomLogger, contacts []config.AddonContact) Http
 			pattern := `^sip:[^@]+@[^@]+\.[^@]+$`
 			valid, err := regexp.MatchString(pattern, payload.CalledNumber)
 			if err != nil {
+				logger.InfoPkg(logPrefix, "Replying with HTTP 500: Error validating CalledNumber")
 				http.Error(w, "Error validating CalledNumber", http.StatusInternalServerError)
 				return
 			}
 			if !valid {
+				logger.InfoPkg(logPrefix, "Replying with HTTP 400: CalledNumber must be in the format sip:<number>@<domain>")
 				http.Error(w, "CalledNumber must be in the format sip:<number>@<domain>", http.StatusBadRequest)
 				return
 			}
@@ -90,6 +96,7 @@ func NewServer(logger *logger.CustomLogger, contacts []config.AddonContact) Http
 			// Check if we know about this contact
 			contactURI, exists := h.contactLookupMap[payload.CalledContact]
 			if !exists {
+				logger.InfoPkg(logPrefix, "Replying with HTTP 400: Unknown contact")
 				http.Error(w, fmt.Sprintf("Unknown contact: %s", payload.CalledContact), http.StatusBadRequest)
 				return
 			}
@@ -103,6 +110,7 @@ func NewServer(logger *logger.CustomLogger, contacts []config.AddonContact) Http
 		// w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = fmt.Fprintf(w, "Payload is valid. Initiating TTS generation and outgoing call.")
+		logger.InfoPkgf(logPrefix, "Payload is valid. Initiating TTS generation and outgoing call.")
 
 		// Send to the output channel
 		h.outCh <- payload
