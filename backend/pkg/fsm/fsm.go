@@ -3,7 +3,6 @@ package fsm
 import (
 	"fmt"
 
-	"voip-client-backend/pkg/httpserver"
 	"voip-client-backend/pkg/logger"
 	"voip-client-backend/pkg/tts"
 
@@ -58,10 +57,18 @@ func (s FSMState) String() string {
 
 const logPrefix = "fsm"
 
+type NewCallRequest struct {
+	CalledNumber string
+	MessageTTS   string
+}
+
 type VoipClientFSM struct {
 	logger        *logger.CustomLogger
 	baresipHandle *gobaresip.Baresip
 	ttsService    *tts.TTSService
+
+	// state changes channel
+	stateChangesCh chan FSMState
 
 	// main state machine state
 	currentState FSMState
@@ -83,15 +90,20 @@ func panicIf(condition bool) {
 
 func NewVoipClientFSM(logger *logger.CustomLogger, baresipHandle *gobaresip.Baresip, ttsService *tts.TTSService) *VoipClientFSM {
 	return &VoipClientFSM{
-		currentState:  Uninitialized, // initial state
-		logger:        logger,
-		baresipHandle: baresipHandle,
-		ttsService:    ttsService,
+		currentState:   Uninitialized, // initial state
+		logger:         logger,
+		baresipHandle:  baresipHandle,
+		ttsService:     ttsService,
+		stateChangesCh: make(chan FSMState),
 	}
 }
 
 func (fsm *VoipClientFSM) GetCurrentState() FSMState {
 	return fsm.currentState
+}
+
+func (fsm *VoipClientFSM) GetStateChannel() chan FSMState {
+	return fsm.stateChangesCh
 }
 
 func (fsm *VoipClientFSM) transitionTo(state FSMState) {
@@ -104,6 +116,9 @@ func (fsm *VoipClientFSM) transitionTo(state FSMState) {
 		fsm.pendingAudioFileToPlay = ""
 		fsm.currentCallId = ""
 	}
+
+	// notify listeners, if any
+	fsm.stateChangesCh <- state
 }
 
 func (fsm *VoipClientFSM) InitializeUserAgent(sip_uri, password string) error {
@@ -149,7 +164,7 @@ func (fsm *VoipClientFSM) OnRegisterFail(event gobaresip.EventMsg) error {
 	return nil
 }
 
-func (fsm *VoipClientFSM) OnNewOutgoingCallRequest(newRequest httpserver.DialPayload) error {
+func (fsm *VoipClientFSM) OnNewOutgoingCallRequest(newRequest NewCallRequest) error {
 	fsm.logger.InfoPkgf(logPrefix, "Received new outgoing call request: %+v", newRequest)
 
 	if fsm.currentState != WaitingInputs {

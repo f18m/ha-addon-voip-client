@@ -54,7 +54,7 @@ func main() {
 	}()
 
 	// Run Input HTTP server
-	inputServer := httpserver.NewServer(logger, cfg.Contacts)
+	inputServer := httpserver.NewServer(logger, cfg.HttpRESTServer.Synchronous, cfg.Contacts)
 	go func() {
 		inputServer.ListenAndServe()
 	}()
@@ -73,6 +73,11 @@ func main() {
 	fsmInstance := fsm.NewVoipClientFSM(logger, gb, ttsService)
 	statsTicker := time.NewTicker(cfg.GetStatsInterval())
 
+	// Link the HTTP server with the FSM to handle synchronously requests
+	if cfg.HttpRESTServer.Synchronous {
+		inputServer.SetFSMChannel(fsmInstance.GetStateChannel())
+	}
+
 	// Initiate
 
 	go func() {
@@ -90,7 +95,10 @@ func main() {
 				if !ok {
 					continue
 				}
-				_ = fsmInstance.OnNewOutgoingCallRequest(i)
+				_ = fsmInstance.OnNewOutgoingCallRequest(fsm.NewCallRequest{
+					CalledNumber: i.CalledNumber,
+					MessageTTS:   i.MessageTTS,
+				})
 
 			case e, ok := <-eChan:
 				if !ok {
