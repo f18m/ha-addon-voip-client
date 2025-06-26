@@ -182,7 +182,7 @@ func (t *TTSService) GetAudioFile(message string) (string, error) {
 	}
 
 	// Prepare output directory
-	if err := os.MkdirAll(ttsDlPath, 0755); err != nil {
+	if err := os.MkdirAll(ttsDlPath, 0750); err != nil {
 		return "", fmt.Errorf("error creating directory %s: %w", ttsDlPath, err)
 	}
 
