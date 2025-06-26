@@ -3,6 +3,7 @@ package httpserver
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"regexp"
 	"time"
@@ -61,7 +62,7 @@ func NewServer(logger *logger.CustomLogger, fsmStatePubSub broadcast.Broadcaster
 		Addr:           ":80", // Address to listen on -- this is fixed to the default HTTP port
 		Handler:        mux,
 		ReadTimeout:    10 * time.Second,  // Maximum duration for reading the entire request, including body
-		WriteTimeout:   10 * time.Second,  // Maximum duration before timing out writes of the response
+		WriteTimeout:   0,                 // In synchronous mode, it may take a lot of time to complete the write of the response... let's not set any timeout
 		IdleTimeout:    120 * time.Second, // Maximum amount of time to wait for the next request when keep-alive is enabled
 		MaxHeaderBytes: 1 << 18,           // Max size of request headers, default is 256kB
 	}
@@ -69,30 +70,41 @@ func NewServer(logger *logger.CustomLogger, fsmStatePubSub broadcast.Broadcaster
 	return h
 }
 
-func (h *HttpServer) waitForFSMState(s fsm.FSMState) {
+func (h *HttpServer) waitForFSMState(s fsm.FSMState, w http.ResponseWriter) {
 	ch := make(chan interface{})
 
 	// temporarily subscribe to the FSM state changes
 	h.fsmStateSubCh.Register(ch)
 	defer h.fsmStateSubCh.Unregister(ch)
 
+	// create ticker to provide some update
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
 	h.logger.InfoPkgf(logPrefix, "Now waiting for FSM to reach the [%s] state", s.String())
-	for stateIntf := range ch {
+	for {
 
-		state, ok := stateIntf.(fsm.FSMState)
-		if !ok {
-			panic("bug")
+		select {
+		case stateIntf := <-ch:
+			state, ok := stateIntf.(fsm.FSMState)
+			if !ok {
+				panic("bug")
+			}
+
+			// Is it the state we are waiting for?
+			if state == s {
+				// yes
+				h.logger.InfoPkgf(logPrefix, "FSM state changed to the required state %s", s.String())
+				return
+			}
+
+			// keep waiting
+			h.logger.InfoPkgf(logPrefix, "Ignoring FSM state change: %s", state.String())
+
+		case <-ticker.C:
+			// Provide update to the HTTP client
+			_, _ = io.WriteString(w, "...call ongoing...\n")
 		}
-
-		// Is it the state we are waiting for?
-		if state == s {
-			// yes
-			h.logger.InfoPkgf(logPrefix, "FSM state changed to %s", s.String())
-			return
-		}
-
-		// keep waiting
-		h.logger.InfoPkgf(logPrefix, "Ignoring FSM state change: %s", state.String())
 	}
 }
 
@@ -160,30 +172,32 @@ func (h *HttpServer) serveDial(w http.ResponseWriter, r *http.Request) {
 		h.logger.InfoPkgf(logPrefix, "Using contact URI %s for CalledContact %s", payload.CalledNumber, payload.CalledContact)
 	}
 
-	if !h.synchronous {
-		// Respond to the client immediately
-		httpMsg := "Payload is valid. Initiating TTS generation and outgoing call in asynchronous way."
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(httpMsg))
-		h.logger.InfoPkgf(logPrefix, "Immediately replying with HTTP 200 (synchronous mode OFF): %s", httpMsg)
-	}
-
 	// Send to the output channel
 	// h.logger.InfoPkgf(logPrefix, "Sending new call request to FSM")
 	h.outCh <- payload
 	// h.logger.InfoPkgf(logPrefix, "Sent new call request to the FSM")
 
 	if h.synchronous {
-		h.logger.InfoPkgf(logPrefix, "Now waiting for processing to complete (synchronous mode ON) before answering to the HTTP client...")
+		h.logger.InfoPkgf(logPrefix, "Writing 200 OK and then waiting for processing to complete (synchronous mode) before sending full body to the HTTP client...")
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Trailer", "CallCompleted")
+		w.WriteHeader(http.StatusOK)
 
 		// wait till the FSM goes back into WaitingInputs state
-		h.waitForFSMState(fsm.WaitingInputs)
+		h.waitForFSMState(fsm.WaitingInputs, w)
 
 		// then respond to the client
-		httpMsg := "Payload was valid and the request has been handled synchronously. TTS and call have been attempted. Check addon logs to understand if the TTS/call were successful or not. Processing has been completed and the addon is ready to accept new requests."
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(httpMsg))
+		httpMsg := "Payload was valid and the request has been handled synchronously.\nTTS and call have been attempted. Check addon logs to understand if the TTS/call were successful or not.\nProcessing has been completed and the addon is ready to accept new requests."
+		_, _ = io.WriteString(w, httpMsg)
+		w.Header().Set("CallCompleted", "True")
 		h.logger.InfoPkgf(logPrefix, "Delayed reply with HTTP 200: %s", httpMsg)
+	} else {
+		// Respond to the client immediately, without any waiting
+		httpMsg := "Payload is valid. Initiating TTS generation and outgoing call in asynchronous way."
+		w.WriteHeader(http.StatusOK)
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		_, _ = io.WriteString(w, httpMsg)
+		h.logger.InfoPkgf(logPrefix, "Immediately replying with HTTP 200 (asynchronous mode): %s", httpMsg)
 	}
 }
 
