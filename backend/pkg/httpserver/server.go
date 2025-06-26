@@ -70,7 +70,7 @@ func NewServer(logger *logger.CustomLogger, fsmStatePubSub broadcast.Broadcaster
 	return h
 }
 
-func (h *HttpServer) waitForFSMState(s fsm.FSMState, w http.ResponseWriter) {
+func (h *HttpServer) waitForFSMState(desiredState fsm.FSMState, w http.ResponseWriter) {
 	ch := make(chan interface{})
 
 	// temporarily subscribe to the FSM state changes
@@ -81,7 +81,12 @@ func (h *HttpServer) waitForFSMState(s fsm.FSMState, w http.ResponseWriter) {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
-	h.logger.InfoPkgf(logPrefix, "Now waiting for FSM to reach the [%s] state", s.String())
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		panic("expected http.ResponseWriter to be an http.Flusher")
+	}
+
+	h.logger.InfoPkgf(logPrefix, "Now waiting for FSM to reach the [%s] state", desiredState.String())
 	for {
 
 		select {
@@ -92,18 +97,20 @@ func (h *HttpServer) waitForFSMState(s fsm.FSMState, w http.ResponseWriter) {
 			}
 
 			// Is it the state we are waiting for?
-			if state == s {
+			if state == desiredState {
 				// yes
-				h.logger.InfoPkgf(logPrefix, "FSM state changed to the required state %s", s.String())
+				h.logger.InfoPkgf(logPrefix, "FSM state changed to the required state [%s]", desiredState.String())
 				return
 			}
 
 			// keep waiting
-			h.logger.InfoPkgf(logPrefix, "Ignoring FSM state change: %s", state.String())
+			h.logger.InfoPkgf(logPrefix, "Ignoring FSM state change [%s]; waiting for FSM to reach state [%s]",
+				state.String(), desiredState.String())
 
 		case <-ticker.C:
 			// Provide update to the HTTP client
 			_, _ = io.WriteString(w, "...call ongoing...\n")
+			flusher.Flush() // Trigger "chunked" encoding and send a chunk...
 		}
 	}
 }
