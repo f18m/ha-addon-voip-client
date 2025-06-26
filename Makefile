@@ -118,7 +118,7 @@ DOCKER_RUN_OPTIONS:= \
 
 #
 # E.g.
-#    make test-docker-image TEST_OPTIONS=./secret-options.json
+#    make test-docker-image TEST_OPTIONS=./testing/test-secret-options.json
 #
 test-docker-image: 
 	$(MAKE) FAST=1 build-docker-image
@@ -146,7 +146,7 @@ endif
 #   make test-call TEST_CALL_PAYLOAD=./testing/test-httppayload-myphone.json
 #
 test-call:
-	curl -vv http://localhost:$(TEST_CONTAINER_HOST_PORT) \
+	curl -vv http://localhost:$(TEST_CONTAINER_HOST_PORT)/dial \
 		-H "Content-Type: application/json" \
 		-d @$(TEST_CALL_PAYLOAD)
 

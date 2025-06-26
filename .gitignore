@@ -7,7 +7,7 @@ frontend/.sass-cache/
 frontend/external-libs/
 
 # store here your real VOIP provider credentials for testing this addon:
-secret-options.json
+testing/test-secret-options.json
 
 # store here your real phone number for testing this addon:
 testing/test-httppayload-myphone.json

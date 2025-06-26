@@ -62,6 +62,14 @@ options:
       # the SIP URI of the contact, in the format
       #  <sip:user@domain;uri-params>
       uri: "<sip:johndoe@example.com>"
+  stats:
+    interval: 1h
+  http_rest_server:
+    # if true, when an HTTP POST is sent to the addon to initiate a new call,
+    # the 200 OK will be returned to the client
+    # only after the addon has _completed_ the voice call.
+    synchronous: true
+
 schema:
   voip_provider:
     name: str
@@ -74,6 +82,10 @@ schema:
       # the SIP URI of the contact, in the format
       #  <sip:user@domain;uri-params>
       uri: str
+  stats:
+    interval: str
+  http_rest_server:
+    synchronous: bool
 
 # categorize this addon as a "application" addon
 startup: application

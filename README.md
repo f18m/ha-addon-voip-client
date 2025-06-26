@@ -13,7 +13,10 @@ This addon runs a `baresip` instance and allow HomeAssistant to interact with it
 
 ## Features
 
-TODO
+* simple-to-use integration with the HomeAssistant Text-To-Speech engine;
+* provides a REST server that allows e.g. to expose to HomeAssistant the status of the VOIP client (waiting inputs, dialing, replaying TTS message, etc);
+* support contact lists to avoid exposing phone numbers in automations;
+
 
 ## How to Install and How to Configure
 
@@ -21,11 +24,12 @@ Check out the [addon docs](DOCS.md). Open an [issue](https://github.com/f18m/ha-
 
 ## Similar Addons
 
-* [ha-sip](https://github.com/arnonym/ha-plugins): an HomeAssistant addon that provides a VOIP client based on the pjsip project.
+* [ha-sip](https://github.com/arnonym/ha-plugins): an HomeAssistant addon that provides a VOIP client based on the [pjsip project](https://www.pjsip.org/).
+* [dss_voip](https://github.com/sdesalve/hassio-addons/blob/master/dss_voip): an HomeAssistant addon that provides a VOIP client based on the [pjsip project](https://www.pjsip.org/); this particular addon was easier to use compared to ha-sip but has been [abandoned](https://community.home-assistant.io/t/end-of-life-abandoned-dismissed-dss-voip-notifier/130993) in Dec 2024. This is the main reason I started this project.
 
 ## Future Developments
 
-TODO
+See [issues](https://github.com/f18m/ha-addon-voip-client/issues) tagged as "enhancement" to get an idea of next developments.
 
 ## Development
 

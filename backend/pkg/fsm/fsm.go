@@ -3,10 +3,10 @@ package fsm
 import (
 	"fmt"
 
-	"voip-client-backend/pkg/httpserver"
 	"voip-client-backend/pkg/logger"
 	"voip-client-backend/pkg/tts"
 
+	"github.com/dustin/go-broadcast"
 	"github.com/f18m/go-baresip/pkg/gobaresip"
 )
 
@@ -58,10 +58,18 @@ func (s FSMState) String() string {
 
 const logPrefix = "fsm"
 
+type NewCallRequest struct {
+	CalledNumber string
+	MessageTTS   string
+}
+
 type VoipClientFSM struct {
 	logger        *logger.CustomLogger
 	baresipHandle *gobaresip.Baresip
 	ttsService    *tts.TTSService
+
+	// state changes channel
+	stateChangesPubCh broadcast.Broadcaster
 
 	// main state machine state
 	currentState FSMState
@@ -81,12 +89,17 @@ func panicIf(condition bool) {
 }
 */
 
-func NewVoipClientFSM(logger *logger.CustomLogger, baresipHandle *gobaresip.Baresip, ttsService *tts.TTSService) *VoipClientFSM {
+func NewVoipClientFSM(
+	logger *logger.CustomLogger,
+	baresipHandle *gobaresip.Baresip,
+	ttsService *tts.TTSService,
+	fsmStatePubSub broadcast.Broadcaster) *VoipClientFSM {
 	return &VoipClientFSM{
-		currentState:  Uninitialized, // initial state
-		logger:        logger,
-		baresipHandle: baresipHandle,
-		ttsService:    ttsService,
+		currentState:      Uninitialized, // initial state
+		logger:            logger,
+		baresipHandle:     baresipHandle,
+		ttsService:        ttsService,
+		stateChangesPubCh: fsmStatePubSub,
 	}
 }
 
@@ -104,6 +117,11 @@ func (fsm *VoipClientFSM) transitionTo(state FSMState) {
 		fsm.pendingAudioFileToPlay = ""
 		fsm.currentCallId = ""
 	}
+
+	// notify listeners, if any
+	// NOTE: compared to a regular go channel, the broadcaster allows multiple subscribers
+	//       and won't block if no one is listening
+	fsm.stateChangesPubCh.Submit(fsm.currentState)
 }
 
 func (fsm *VoipClientFSM) InitializeUserAgent(sip_uri, password string) error {
@@ -149,7 +167,7 @@ func (fsm *VoipClientFSM) OnRegisterFail(event gobaresip.EventMsg) error {
 	return nil
 }
 
-func (fsm *VoipClientFSM) OnNewOutgoingCallRequest(newRequest httpserver.Payload) error {
+func (fsm *VoipClientFSM) OnNewOutgoingCallRequest(newRequest NewCallRequest) error {
 	fsm.logger.InfoPkgf(logPrefix, "Received new outgoing call request: %+v", newRequest)
 
 	if fsm.currentState != WaitingInputs {
@@ -162,7 +180,7 @@ func (fsm *VoipClientFSM) OnNewOutgoingCallRequest(newRequest httpserver.Payload
 	var err error
 	fsm.pendingAudioFileToPlay, err = fsm.ttsService.GetAudioFile(newRequest.MessageTTS)
 	if err != nil {
-		fsm.logger.InfoPkgf(logPrefix, "Error doing the Text-to-Speech: %s", err)
+		fsm.logger.InfoPkgf(logPrefix, "Error doing the Text-to-Speech conversion: %s", err)
 		fsm.transitionTo(WaitingInputs)
 		return nil
 	}

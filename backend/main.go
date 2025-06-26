@@ -16,12 +16,14 @@ import (
 	"voip-client-backend/pkg/tts"
 
 	"github.com/f18m/go-baresip/pkg/gobaresip"
+
+	broadcast "github.com/dustin/go-broadcast"
 )
 
 const logPrefix = "main"
 
 func main() {
-	logger := logger.NewCustomLogger("voip-client")
+	logger := logger.NewCustomLogger("backend")
 	logger.Info("VOIP client backend starting")
 
 	// Read our own config
@@ -34,7 +36,7 @@ func main() {
 	gb, err := gobaresip.New(
 		gobaresip.UseExternalBaresip(), // s6-overlay is running baresip in the background
 		gobaresip.SetLogger(logger),
-		gobaresip.SetPingInterval(60*time.Second),
+		gobaresip.SetPingInterval(1*time.Hour),
 	)
 	if err != nil {
 		logger.Fatalf("baresip init error: %s", err)
@@ -53,8 +55,16 @@ func main() {
 		}
 	}()
 
+	// PUB-SUB channel used from FSM to publish its state changes to...whoever is interested
+	broadcaster := broadcast.NewBroadcaster(100)
+
 	// Run Input HTTP server
-	inputServer := httpserver.NewServer(logger)
+	var inputServer httpserver.HttpServer
+	if cfg.HttpRESTServer.Synchronous {
+		inputServer = httpserver.NewServer(logger, broadcaster, cfg.Contacts)
+	} else {
+		inputServer = httpserver.NewServer(logger, nil, cfg.Contacts)
+	}
 	go func() {
 		inputServer.ListenAndServe()
 	}()
@@ -70,7 +80,8 @@ func main() {
 	cChan := gb.GetConnectedChan()
 	eChan := gb.GetEventChan()
 	iChan := inputServer.GetInputChannel()
-	fsmInstance := fsm.NewVoipClientFSM(logger, gb, ttsService)
+	fsmInstance := fsm.NewVoipClientFSM(logger, gb, ttsService, broadcaster)
+	statsTicker := time.NewTicker(cfg.GetStatsInterval())
 
 	// Initiate
 
@@ -89,7 +100,10 @@ func main() {
 				if !ok {
 					continue
 				}
-				_ = fsmInstance.OnNewOutgoingCallRequest(i)
+				_ = fsmInstance.OnNewOutgoingCallRequest(fsm.NewCallRequest{
+					CalledNumber: i.CalledNumber,
+					MessageTTS:   i.MessageTTS,
+				})
 
 			case e, ok := <-eChan:
 				if !ok {
@@ -117,6 +131,11 @@ func main() {
 				default:
 					logger.InfoPkgf(logPrefix, "Ignoring event type %s", e.Type)
 				}
+
+			case <-statsTicker.C:
+				// Publish baresip stats to the logger
+				stats := gb.GetStats()
+				logger.InfoPkgf(logPrefix, "Baresip client stats: %+v", stats)
 			}
 		}
 	}()
