@@ -10,6 +10,8 @@ import (
 	"voip-client-backend/pkg/config"
 	"voip-client-backend/pkg/fsm"
 	"voip-client-backend/pkg/logger"
+
+	"github.com/dustin/go-broadcast"
 )
 
 type DialPayload struct {
@@ -24,17 +26,18 @@ type HttpServer struct {
 	contactLookupMap map[string]string // Maps contact names to their URIs
 	synchronous      bool
 
-	fsmStateCh chan fsm.FSMState
-	outCh      chan DialPayload
+	fsmStateSubCh broadcast.Broadcaster
+	outCh         chan DialPayload
 }
 
 const logPrefix = "httpserver"
 const dialEndpoint = "/dial"
 
-func NewServer(logger *logger.CustomLogger, sync bool, contacts []config.AddonContact) HttpServer {
+func NewServer(logger *logger.CustomLogger, fsmStatePubSub broadcast.Broadcaster, contacts []config.AddonContact) HttpServer {
 	h := HttpServer{
 		logger:           logger,
-		synchronous:      sync,
+		synchronous:      fsmStatePubSub != nil,
+		fsmStateSubCh:    fsmStatePubSub,
 		outCh:            make(chan DialPayload),
 		contactLookupMap: make(map[string]string),
 	}
@@ -66,24 +69,30 @@ func NewServer(logger *logger.CustomLogger, sync bool, contacts []config.AddonCo
 	return h
 }
 
-func (h *HttpServer) SetFSMChannel(c chan fsm.FSMState) {
-	h.fsmStateCh = c
-}
-
 func (h *HttpServer) waitForFSMState(s fsm.FSMState) {
-	for {
-		// Wait for a FSM state change
-		state := <-h.fsmStateCh
+	ch := make(chan interface{})
+
+	// temporarily subscribe to the FSM state changes
+	h.fsmStateSubCh.Register(ch)
+	defer h.fsmStateSubCh.Unregister(ch)
+
+	h.logger.InfoPkgf(logPrefix, "Now waiting for FSM to reach the [%s] state", s.String())
+	for stateIntf := range ch {
+
+		state, ok := stateIntf.(fsm.FSMState)
+		if !ok {
+			panic("bug")
+		}
 
 		// Is it the state we are waiting for?
 		if state == s {
 			// yes
-			h.logger.InfoPkgf(logPrefix, "FSM state changed to %s", s)
+			h.logger.InfoPkgf(logPrefix, "FSM state changed to %s", s.String())
 			return
 		}
 
 		// keep waiting
-		h.logger.InfoPkgf(logPrefix, "Ignoring FSM state change: %s", state)
+		h.logger.InfoPkgf(logPrefix, "Ignoring FSM state change: %s", state.String())
 	}
 }
 
@@ -153,23 +162,28 @@ func (h *HttpServer) serveDial(w http.ResponseWriter, r *http.Request) {
 
 	if !h.synchronous {
 		// Respond to the client immediately
+		httpMsg := "Payload is valid. Initiating TTS generation and outgoing call in asynchronous way."
 		w.WriteHeader(http.StatusOK)
-		_, _ = fmt.Fprintf(w, "Payload is valid. Initiating TTS generation and outgoing call.")
-		h.logger.InfoPkgf(logPrefix, "Replying with HTTP 200: Payload is valid. Initiating TTS generation and outgoing call.")
+		_, _ = w.Write([]byte(httpMsg))
+		h.logger.InfoPkgf(logPrefix, "Immediately replying with HTTP 200 (synchronous mode OFF): %s", httpMsg)
 	}
 
 	// Send to the output channel
+	// h.logger.InfoPkgf(logPrefix, "Sending new call request to FSM")
 	h.outCh <- payload
+	// h.logger.InfoPkgf(logPrefix, "Sent new call request to the FSM")
 
 	if h.synchronous {
+		h.logger.InfoPkgf(logPrefix, "Now waiting for processing to complete (synchronous mode ON) before answering to the HTTP client...")
 
 		// wait till the FSM goes back into WaitingInputs state
 		h.waitForFSMState(fsm.WaitingInputs)
 
 		// then respond to the client
+		httpMsg := "Payload was valid and the request has been handled synchronously. TTS and call have been attempted. Check addon logs to understand if the TTS/call were successful or not. Processing has been completed and the addon is ready to accept new requests."
 		w.WriteHeader(http.StatusOK)
-		_, _ = fmt.Fprintf(w, "Payload is valid. Initiating TTS generation and outgoing call.")
-		h.logger.InfoPkgf(logPrefix, "Replying with HTTP 200: Payload is valid. Initiating TTS generation and outgoing call.")
+		_, _ = w.Write([]byte(httpMsg))
+		h.logger.InfoPkgf(logPrefix, "Delayed reply with HTTP 200: %s", httpMsg)
 	}
 }
 

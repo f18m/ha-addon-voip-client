@@ -16,6 +16,7 @@ import (
 const ttsUrl = "http://hassio/homeassistant/api/tts_get_url"
 const ttsDlPath = "/share/voip-client"
 const ttsHttpApiTimeout = 10 * time.Second
+const logPrefix = "tts"
 
 type TTSService struct {
 	logger   *logger.CustomLogger
@@ -77,7 +78,7 @@ func (t *TTSService) getTTSURL(message string) (*haTTSResponsePayload, error) {
 	ctx, cancelFn := context.WithTimeout(context.Background(), ttsHttpApiTimeout)
 	defer cancelFn()
 
-	t.logger.InfoPkgf("tts", "Launching HTTP POST to the HomeAssistant TTS [%s] with payload [%s]", ttsUrl, payloadBytes)
+	t.logger.InfoPkgf(logPrefix, "Launching HTTP POST to the HomeAssistant TTS [%s] with payload [%s]", ttsUrl, payloadBytes)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ttsUrl, bytes.NewReader(payloadBytes))
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %w", err)
@@ -120,7 +121,7 @@ func (t *TTSService) downloadAudioFile(url string) (string, error) {
 	}
 
 	// Create a new request with context
-	t.logger.InfoPkgf("tts", "Launching HTTP GET to the HomeAssistant TTS to retrieve audio file [%s]", url)
+	t.logger.InfoPkgf(logPrefix, "Launching HTTP GET to the HomeAssistant TTS to retrieve audio file [%s]", url)
 	ctx, cancel := context.WithTimeout(context.Background(), ttsHttpApiTimeout)
 	defer cancel()
 
@@ -154,6 +155,14 @@ func (t *TTSService) downloadAudioFile(url string) (string, error) {
 }
 
 func (t *TTSService) GetAudioFile(message string) (string, error) {
+
+	// Support local testing outside HomeAssistant environment
+	localTesting := os.Getenv("LOCAL_TESTING") != ""
+	if localTesting {
+		t.logger.InfoPkgf(logPrefix, "Running in local testing mode, using hardcoded audio file instead of TTS service")
+		return "/usr/share/baresip/test-message.wav", nil // return a hardcoded path
+	}
+
 	// Get the TTS URL
 	responsePayload, err := t.getTTSURL(message)
 	if err != nil {
@@ -166,7 +175,7 @@ func (t *TTSService) GetAudioFile(message string) (string, error) {
 		return "", fmt.Errorf("error downloading audio file: %w", err)
 	}
 
-	t.logger.InfoPkgf("tts", "Successfully retrieved audio file and stored at [%s]", outPath)
+	t.logger.InfoPkgf(logPrefix, "Successfully retrieved audio file and stored at [%s]", outPath)
 
 	return outPath, nil // return the path to the downloaded file
 }

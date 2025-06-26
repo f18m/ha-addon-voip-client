@@ -1,3 +1,5 @@
+github.com/dustin/go-broadcast v0.0.0-20211018055107-71439988bd91 h1:jAUM3D1KIrJmwx60DKB+a/qqM69yHnu6otDGVa2t0vs=
+github.com/dustin/go-broadcast v0.0.0-20211018055107-71439988bd91/go.mod h1:8rK6Kbo1Jd6sK22b24aPVgAm3jlNy1q1ft+lBALdIqA=
 github.com/f18m/go-baresip v1.0.2-0.20250625213818-6560dc17b46f h1:E8gauc9GpmkNH6HJ0i65VfoYYWjdyj0erwGX7C4NNqc=
 github.com/f18m/go-baresip v1.0.2-0.20250625213818-6560dc17b46f/go.mod h1:flYhOS7i83wdM/eIWD2LbUIPqnGQGqBYEnoSjH1AYZw=
 github.com/goccy/go-json v0.10.5 h1:Fq85nIqj+gXn/S5ahsiTlK3TmC85qgirsdTP/+DeaC4=

@@ -13,5 +13,11 @@
       "name": "Bob",
       "uri": "sip:bob@example.com"
     }
-  ]
+  ],
+  "stats": {
+    "interval": "1h"
+  },
+  "http_rest_server": {
+    "synchronous": true
+  }
 }

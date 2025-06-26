@@ -16,6 +16,8 @@ import (
 	"voip-client-backend/pkg/tts"
 
 	"github.com/f18m/go-baresip/pkg/gobaresip"
+
+	broadcast "github.com/dustin/go-broadcast"
 )
 
 const logPrefix = "main"
@@ -53,8 +55,16 @@ func main() {
 		}
 	}()
 
+	// PUB-SUB channel used from FSM to publish its state changes to...whoever is interested
+	broadcaster := broadcast.NewBroadcaster(100)
+
 	// Run Input HTTP server
-	inputServer := httpserver.NewServer(logger, cfg.HttpRESTServer.Synchronous, cfg.Contacts)
+	var inputServer httpserver.HttpServer
+	if cfg.HttpRESTServer.Synchronous {
+		inputServer = httpserver.NewServer(logger, broadcaster, cfg.Contacts)
+	} else {
+		inputServer = httpserver.NewServer(logger, nil, cfg.Contacts)
+	}
 	go func() {
 		inputServer.ListenAndServe()
 	}()
@@ -70,13 +80,8 @@ func main() {
 	cChan := gb.GetConnectedChan()
 	eChan := gb.GetEventChan()
 	iChan := inputServer.GetInputChannel()
-	fsmInstance := fsm.NewVoipClientFSM(logger, gb, ttsService)
+	fsmInstance := fsm.NewVoipClientFSM(logger, gb, ttsService, broadcaster)
 	statsTicker := time.NewTicker(cfg.GetStatsInterval())
-
-	// Link the HTTP server with the FSM to handle synchronously requests
-	if cfg.HttpRESTServer.Synchronous {
-		inputServer.SetFSMChannel(fsmInstance.GetStateChannel())
-	}
 
 	// Initiate
 

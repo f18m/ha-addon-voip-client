@@ -6,6 +6,7 @@ import (
 	"voip-client-backend/pkg/logger"
 	"voip-client-backend/pkg/tts"
 
+	"github.com/dustin/go-broadcast"
 	"github.com/f18m/go-baresip/pkg/gobaresip"
 )
 
@@ -68,7 +69,7 @@ type VoipClientFSM struct {
 	ttsService    *tts.TTSService
 
 	// state changes channel
-	stateChangesCh chan FSMState
+	stateChangesPubCh broadcast.Broadcaster
 
 	// main state machine state
 	currentState FSMState
@@ -88,22 +89,22 @@ func panicIf(condition bool) {
 }
 */
 
-func NewVoipClientFSM(logger *logger.CustomLogger, baresipHandle *gobaresip.Baresip, ttsService *tts.TTSService) *VoipClientFSM {
+func NewVoipClientFSM(
+	logger *logger.CustomLogger,
+	baresipHandle *gobaresip.Baresip,
+	ttsService *tts.TTSService,
+	fsmStatePubSub broadcast.Broadcaster) *VoipClientFSM {
 	return &VoipClientFSM{
-		currentState:   Uninitialized, // initial state
-		logger:         logger,
-		baresipHandle:  baresipHandle,
-		ttsService:     ttsService,
-		stateChangesCh: make(chan FSMState),
+		currentState:      Uninitialized, // initial state
+		logger:            logger,
+		baresipHandle:     baresipHandle,
+		ttsService:        ttsService,
+		stateChangesPubCh: fsmStatePubSub,
 	}
 }
 
 func (fsm *VoipClientFSM) GetCurrentState() FSMState {
 	return fsm.currentState
-}
-
-func (fsm *VoipClientFSM) GetStateChannel() chan FSMState {
-	return fsm.stateChangesCh
 }
 
 func (fsm *VoipClientFSM) transitionTo(state FSMState) {
@@ -118,7 +119,7 @@ func (fsm *VoipClientFSM) transitionTo(state FSMState) {
 	}
 
 	// notify listeners, if any
-	fsm.stateChangesCh <- state
+	fsm.stateChangesPubCh.Submit(fsm.currentState)
 }
 
 func (fsm *VoipClientFSM) InitializeUserAgent(sip_uri, password string) error {
