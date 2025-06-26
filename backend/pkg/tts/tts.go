@@ -3,6 +3,8 @@ package tts
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -114,7 +116,16 @@ func (t *TTSService) getTTSURL(message string) (*haTTSResponsePayload, error) {
 
 	return &responsePayload, nil
 }
-func (t *TTSService) downloadAudioFile(url string) (string, error) {
+
+func (t *TTSService) getOutputFilepath(message string) string {
+	// Hash with sha256 the message to create a unique filename:
+	hasher := sha256.New()
+	hasher.Write([]byte(message))
+	hash := hex.EncodeToString(hasher.Sum(nil))
+	return filepath.Join(ttsDlPath, "tts_"+hash+".wav")
+}
+
+func (t *TTSService) downloadAudioFile(url string, outPath string) error {
 	// Create a custom HTTP client with timeouts
 	client := &http.Client{
 		Timeout: ttsHttpApiTimeout,
@@ -127,31 +138,30 @@ func (t *TTSService) downloadAudioFile(url string) (string, error) {
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	// Get the data
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", err
+		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	// Create the file
-	outPath := filepath.Join(ttsDlPath, "audio.mp3") // FIXME: take the hash of the message and use it as filename
-	out, err := os.Create(outPath)                   //nolint:gosec
+	out, err := os.Create(outPath) //nolint:gosec
 	if err != nil {
-		return "", err
+		return err
 	}
 	defer func() { _ = out.Close() }()
 
 	// Write the body to file
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
-		return "", err
+		return err
 	}
 
-	return outPath, nil
+	return nil
 }
 
 func (t *TTSService) GetAudioFile(message string) (string, error) {
@@ -163,6 +173,19 @@ func (t *TTSService) GetAudioFile(message string) (string, error) {
 		return "/usr/share/baresip/test-message.wav", nil // return a hardcoded path
 	}
 
+	// Prepare the output file path
+	outPath := t.getOutputFilepath(message)
+	if _, err := os.Stat(outPath); err == nil {
+		// the result of TTS engine has been cached...
+		t.logger.InfoPkgf(logPrefix, "Audio file for message [%s] already exists at [%s], skipping TTS service call", message, outPath)
+		return outPath, nil
+	}
+
+	// Prepare output directory
+	if err := os.MkdirAll(ttsDlPath, 0755); err != nil {
+		return "", fmt.Errorf("error creating directory %s: %w", ttsDlPath, err)
+	}
+
 	// Get the TTS URL
 	responsePayload, err := t.getTTSURL(message)
 	if err != nil {
@@ -170,8 +193,8 @@ func (t *TTSService) GetAudioFile(message string) (string, error) {
 	}
 
 	// Download the audio file
-	outPath, err2 := t.downloadAudioFile(responsePayload.URL)
-	if err2 != nil {
+	err = t.downloadAudioFile(responsePayload.URL, outPath)
+	if err != nil {
 		return "", fmt.Errorf("error downloading audio file: %w", err)
 	}
 
