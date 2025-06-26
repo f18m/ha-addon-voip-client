@@ -145,14 +145,13 @@ endif
 # E.g.
 #   make test-call TEST_CALL_PAYLOAD=./testing/test-httppayload-myphone.json
 #
+# NOTE that --raw is useful to see Trailers
+#
 test-call:
-	curl -vv http://localhost:$(TEST_CONTAINER_HOST_PORT)/dial \
+	curl -vv --raw \
+		http://localhost:$(TEST_CONTAINER_HOST_PORT)/dial \
 		-H "Content-Type: application/json" \
 		-d @$(TEST_CALL_PAYLOAD)
-
-
-
-
 
 
 # # NOTE: in the HTTP link below the port is actually the one in test-options.json, and currently it's 8976

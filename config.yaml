@@ -31,7 +31,7 @@ map:
 # the audio files obtained from TTS
   - type: share
     read_only: false
-    path: /share/voip-client
+    path: /share
 
 # no UI for now:
 # enable the ingress feature for this addon, see https://developers.home-assistant.io/docs/add-ons/presentation#ingress
