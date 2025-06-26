@@ -119,6 +119,8 @@ func (fsm *VoipClientFSM) transitionTo(state FSMState) {
 	}
 
 	// notify listeners, if any
+	// NOTE: compared to a regular go channel, the broadcaster allows multiple subscribers
+	//       and won't block if no one is listening
 	fsm.stateChangesPubCh.Submit(fsm.currentState)
 }
 

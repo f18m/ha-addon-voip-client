@@ -39,6 +39,11 @@ rest_command:
         "message_tts": "{{ message_tts }}"
       }
     content_type: "application/json; charset=utf-8"
+    # 2 minutes timeout -- this is important in case you're using the (default) behavior of
+    # synchronous REST API: the 'voip_client_call' action will be running for all the time 
+    # it takes for the call to be picked up, answered and closed (or just rejected) 
+    # by the called party. 2 minutes are typically enough if you're sending short messages.
+    timeout: 120
 
   # This second entry is useful when testing new features with the VOIP client BETA version
   voip_client_call_beta:
@@ -53,6 +58,11 @@ rest_command:
         "message_tts": "{{ message_tts }}"
       }
     content_type: "application/json; charset=utf-8"
+    # 2 minutes timeout -- this is important in case you're using the (default) behavior of
+    # synchronous REST API: the 'voip_client_call' action will be running for all the time 
+    # it takes for the call to be picked up, answered and closed (or just rejected) 
+    # by the called party. 2 minutes are typically enough if you're sending short messages.
+    timeout: 120
 ```
 
 5. Restart your Home Assistant
