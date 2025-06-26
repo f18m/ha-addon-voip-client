@@ -1,5 +1,19 @@
 # Home Assistant Add-on: VOIP client
 
+## Rationale
+
+This addon is typically used to interface your smart home with your cellphone, beyond what 
+the [Home Assistant Companion App](https://companion.home-assistant.io/) may do.
+In particular it's easy to send notifications to both Android and iPhone smartphones using the
+[notify](https://www.home-assistant.io/integrations/notify/) platform.
+Home Assistant also provides the so-called [Critical Notifications](https://companion.home-assistant.io/docs/notifications/critical-notifications/).
+
+However you might prefer to have Home Assistant make a phone call to you.
+For most people, a call is a better attention-catcher compared to a notification.
+
+This addon adds to your Home Assistant a "make call" action that you can use in any automation,
+typically to provide critical notifications to yourself or other stakeholders.
+
 ## Prerequisites
 
 To use this addon you need to have 
@@ -83,7 +97,8 @@ automation:
   actions:
     - action: rest_command.voip_client_call
       data:
-        called_number: sip:<number>@<domain>
+        called_number: "sip:<number>@<domain>"
+        called_contact: ""
         message_tts: "Just a test"
 ```
 
@@ -101,6 +116,10 @@ automation:
   actions:
     - action: rest_command.voip_client_call
       data:
+        called_number: ""
         called_contact: "John Doe"
         message_tts: "Just a test"
 ```
+
+Remember that you cannot provide at the same time both `called_number` and `called_contact`, leave empty what you don't want to provide.
+
