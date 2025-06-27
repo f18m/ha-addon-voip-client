@@ -51,8 +51,6 @@ options:
     # the SIP account to use for outgoing calls, in the format
     #  <sip:user@domain;uri-params>
     account: "<sip:user@example.com;transport=tcp>"
-    # the username to use for authentication with the VOIP provider
-    #username: "your-username"
     # the password to use for authentication with the VOIP provider
     password: "your-password"
   tts_engine:
