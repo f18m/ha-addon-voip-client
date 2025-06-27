@@ -13,11 +13,11 @@ The backend operates a simple Finite State Machine. A slightly-simplified repres
 
 ```mermaid
 flowchart TD
-    Uninitialized("Uninitialized")
-    WaitingUserAgentRegistration("WaitingUserAgentRegistration<br>Add SIP UA to Baresip, which will start registration")
-    WaitingInputs("WaitingInputs<br>Waiting for call requests from HA")
-    WaitForCallEstablishment("WaitForCallEstablishment<br>Run the TTS engine to produce a WAV file. Ask baresip to start the call, then wait")
-    WaitForCallCompletion("WaitForCallCompletion<br>Ask baresip to reproduce the TTS message")
+    Uninitialized("**Uninitialized**")
+    WaitingUserAgentRegistration("**WaitingUserAgentRegistration**<br>Add SIP UA to Baresip, which starts registration/auth")
+    WaitingInputs("**WaitingInputs**<br>Waiting for new call requests from HA")
+    WaitForCallEstablishment("**WaitForCallEstablishment**<br>Run the TTS engine to produce a WAV file. Ask baresip to start the call, then wait")
+    WaitForCallCompletion("**WaitForCallCompletion**<br>Ask baresip to reproduce the TTS message")
 
     Uninitialized -- Baresip TCP skt connected --> WaitingUserAgentRegistration
     WaitingUserAgentRegistration -- Baresip Event: Register OK --> WaitingInputs

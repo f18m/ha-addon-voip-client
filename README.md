@@ -33,5 +33,5 @@ See [issues](https://github.com/f18m/ha-addon-voip-client/issues) tagged as "enh
 
 ## Development
 
-See [DEV.md] doc page.
+See [DEV.md](DEV.md) doc page.
 
