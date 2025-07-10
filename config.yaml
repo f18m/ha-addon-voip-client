@@ -3,9 +3,9 @@
 # as reported by the Github Action workflow 'publish.yaml', so that you can force HomeAssistant
 # to use the docker image of that feature branch instead of the docker image of 'main', by pointing
 # HomeAssistant to that feature branch
-version: beta
-slug: voip-client-beta
-name: VOIP Client BETA
+version: 0.4.1
+slug: voip-client
+name: VOIP Client
 description: A Voice-Over-IP client based on Baresip. Make and receive phone calls from Home assistant!
 url: https://github.com/f18m/ha-addon-voip-client/tree/main
 # advanced true means that the HA user can see this addon only if it's flagged as 'advanced' in the
@@ -51,8 +51,6 @@ options:
     # the SIP account to use for outgoing calls, in the format
     #  <sip:user@domain;uri-params>
     account: "<sip:user@example.com;transport=tcp>"
-    # the username to use for authentication with the VOIP provider
-    #username: "your-username"
     # the password to use for authentication with the VOIP provider
     password: "your-password"
   tts_engine:
