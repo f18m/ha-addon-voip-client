@@ -35,6 +35,10 @@ type AddonOptions struct {
 	HttpRESTServer struct {
 		Synchronous bool `json:"synchronous"`
 	} `json:"http_rest_server"`
+
+	VoiceCalls struct {
+		MaxDuration string `json:"max_duration"`
+	} `json:"voice_calls"`
 }
 
 // readAddonOptions reads the OPTIONS of this Home Assistant addon
@@ -72,6 +76,20 @@ func (o *AddonOptions) GetStatsInterval() time.Duration {
 	d, err := time.ParseDuration(o.Stats.Interval)
 	if err != nil {
 		return 1 * time.Hour // default value
+	}
+
+	return d
+}
+
+func (o *AddonOptions) GetVoiceCallMaxDuration() time.Duration {
+	if o.VoiceCalls.MaxDuration == "" {
+		return 5 * time.Minute // default value
+	}
+
+	// parse the interval string, e.g. "10s", "1m", etc.
+	d, err := time.ParseDuration(o.VoiceCalls.MaxDuration)
+	if err != nil {
+		return 5 * time.Minute // default value
 	}
 
 	return d

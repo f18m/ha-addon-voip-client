@@ -104,11 +104,11 @@ func (h *HttpServer) waitForFSMState(desiredState fsm.FSMState, w http.ResponseW
 			}
 
 			// keep waiting
-			h.logger.InfoPkgf(logPrefix, "Ignoring FSM state change [%s]; waiting for FSM to reach state [%s]",
+			h.logger.InfoPkgf(logPrefix, "Ignoring FSM state change to [%s]; waiting for FSM to reach state [%s]",
 				state.String(), desiredState.String())
 
 		case <-ticker.C:
-			// Provide update to the HTTP client
+			// Provide update to the HTTP client -- FIXME check if we get an error which means client is gone
 			_, _ = io.WriteString(w, "...call ongoing...\n")
 			flusher.Flush() // Trigger "chunked" encoding and send a chunk...
 		}
@@ -183,6 +183,8 @@ func (h *HttpServer) serveDial(w http.ResponseWriter, r *http.Request) {
 	// h.logger.InfoPkgf(logPrefix, "Sending new call request to FSM")
 	h.outCh <- payload
 	// h.logger.InfoPkgf(logPrefix, "Sent new call request to the FSM")
+
+	// FIXME wait for FSM to transition out of WaitingInputs at least
 
 	if h.synchronous {
 		h.logger.InfoPkgf(logPrefix, "Writing 200 OK and then waiting for processing to complete (synchronous mode) before sending full body to the HTTP client...")

@@ -3,9 +3,9 @@
 # as reported by the Github Action workflow 'publish.yaml', so that you can force HomeAssistant
 # to use the docker image of that feature branch instead of the docker image of 'main', by pointing
 # HomeAssistant to that feature branch
-version: 0.4.1
-slug: voip-client
-name: VOIP Client
+version: beta
+slug: voip-client-beta
+name: VOIP Client BETA
 description: A Voice-Over-IP client based on Baresip. Make and receive phone calls from Home assistant!
 url: https://github.com/f18m/ha-addon-voip-client/tree/main
 # advanced true means that the HA user can see this addon only if it's flagged as 'advanced' in the
@@ -61,12 +61,16 @@ options:
       #  <sip:user@domain;uri-params>
       uri: "<sip:johndoe@example.com>"
   stats:
+    # how often metrics/stats for this addon should be printed on log?
     interval: 1h
   http_rest_server:
     # if true, when an HTTP POST is sent to the addon to initiate a new call,
     # the 200 OK will be returned to the client
     # only after the addon has _completed_ the voice call.
     synchronous: true
+  voice_calls:
+    # TODO
+    max_duration: 120s
 
 schema:
   voip_provider:
@@ -84,6 +88,8 @@ schema:
     interval: str
   http_rest_server:
     synchronous: bool
+  voice_calls:
+    max_duration: str
 
 # categorize this addon as a "application" addon
 startup: application

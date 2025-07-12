@@ -29,7 +29,7 @@ call_accept		        no
 # Audio
 audio_path		    /usr/share/baresip
 audio_player		none
-audio_source        aufile,/usr/share/baresip/test-message.wav
+audio_source        ausine,400
 audio_alert		    none
 #ausrc_srate		48000
 #auplay_srate		48000
@@ -122,7 +122,11 @@ module			auresamp.so
 #module			jack.so
 #module			portaudio.so
 #module			aubridge.so
-#module			ausine.so
+
+# ausine is used to generate dummy RTP flows in case the VOIP server initiates an
+# "early media" scenario, i.e. sends SDP setup messages before the call gets into
+# an estabilished state
+module			ausine.so
 
 # aufile is what allows us to load WAV files from disk
 module			aufile.so

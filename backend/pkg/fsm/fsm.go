@@ -2,6 +2,7 @@ package fsm
 
 import (
 	"fmt"
+	"time"
 
 	"voip-client-backend/pkg/logger"
 	"voip-client-backend/pkg/tts"
@@ -64,9 +65,10 @@ type NewCallRequest struct {
 }
 
 type VoipClientFSM struct {
-	logger        *logger.CustomLogger
-	baresipHandle *gobaresip.Baresip
-	ttsService    *tts.TTSService
+	logger               *logger.CustomLogger
+	baresipHandle        *gobaresip.Baresip
+	ttsService           *tts.TTSService
+	maxVoiceCallDuration time.Duration
 
 	// state changes channel
 	stateChangesPubCh broadcast.Broadcaster
@@ -79,6 +81,7 @@ type VoipClientFSM struct {
 	numDialCmds            int
 	pendingAudioFileToPlay string
 	currentCallId          string
+	currentCallStartTime   time.Time
 }
 
 /*
@@ -93,13 +96,15 @@ func NewVoipClientFSM(
 	logger *logger.CustomLogger,
 	baresipHandle *gobaresip.Baresip,
 	ttsService *tts.TTSService,
-	fsmStatePubSub broadcast.Broadcaster) *VoipClientFSM {
+	fsmStatePubSub broadcast.Broadcaster,
+	maxVoiceCallDuration time.Duration) *VoipClientFSM {
 	return &VoipClientFSM{
-		currentState:      Uninitialized, // initial state
-		logger:            logger,
-		baresipHandle:     baresipHandle,
-		ttsService:        ttsService,
-		stateChangesPubCh: fsmStatePubSub,
+		currentState:         Uninitialized, // initial state
+		logger:               logger,
+		baresipHandle:        baresipHandle,
+		ttsService:           ttsService,
+		maxVoiceCallDuration: maxVoiceCallDuration,
+		stateChangesPubCh:    fsmStatePubSub,
 	}
 }
 
@@ -116,6 +121,7 @@ func (fsm *VoipClientFSM) transitionTo(state FSMState) {
 	if state == WaitingInputs {
 		fsm.pendingAudioFileToPlay = ""
 		fsm.currentCallId = ""
+		fsm.currentCallStartTime = time.Time{}
 	}
 
 	// notify listeners, if any
@@ -128,7 +134,7 @@ func (fsm *VoipClientFSM) InitializeUserAgent(sip_uri, password string) error {
 	fsm.logger.InfoPkgf(logPrefix, "Initializing User Agent [%s]", sip_uri)
 
 	if fsm.currentState != Uninitialized {
-		fsm.logger.Warnf("FSM is not in the Uninitialized state, current state: %s. Ignoring initialization request.", fsm.currentState)
+		fsm.logger.WarnPkgf(logPrefix, "FSM is not in the Uninitialized state, current state: %s. Ignoring initialization request.", fsm.currentState)
 		return ErrInvalidState
 	}
 
@@ -143,6 +149,75 @@ func (fsm *VoipClientFSM) InitializeUserAgent(sip_uri, password string) error {
 	fsm.transitionTo(WaitingUserAgentRegistration)
 	return nil
 }
+
+/* -------------------------------------------------------------------------- */
+/*                                TIMER EVENTS                                */
+/* -------------------------------------------------------------------------- */
+
+func (fsm *VoipClientFSM) OnTimeoutTicker() {
+
+	switch fsm.currentState {
+	case Uninitialized:
+	case WaitingUserAgentRegistration:
+	case WaitingInputs:
+		// ignore timer... there is no timeout associated to these FSM states
+		return
+
+	case WaitForCallEstablishment:
+	case WaitForCallCompletion:
+		if !fsm.currentCallStartTime.IsZero() &&
+			time.Since(fsm.currentCallStartTime) > fsm.maxVoiceCallDuration {
+			// reached timeout for the whole call even before the call becomes established
+			fsm.logger.WarnPkgf(logPrefix, "Timeout after %s in state [%s]. Call [%s] aborted.",
+				fsm.maxVoiceCallDuration.String(), fsm.currentState.String(), fsm.currentCallId)
+			fsm.transitionTo(WaitingInputs)
+		}
+	}
+}
+
+/* -------------------------------------------------------------------------- */
+/*                            HOMEASSISTANT EVENTS                            */
+/* -------------------------------------------------------------------------- */
+
+func (fsm *VoipClientFSM) OnNewOutgoingCallRequest(newRequest NewCallRequest) error {
+	fsm.logger.InfoPkgf(logPrefix, "Received new outgoing call request: %+v", newRequest)
+
+	if fsm.currentState != WaitingInputs {
+		// FIXME: perhaps we might instead abort the current operation and start a new call?
+		fsm.logger.WarnPkgf(logPrefix, "FSM is not in the WaitingInputs state, current state: %s. Dropping the new call request. Please wait for previous call to get closed.", fsm.currentState)
+		return ErrInvalidState
+	}
+
+	// ask TTS to generate the WAV file and get its path
+	var err error
+	fsm.pendingAudioFileToPlay, err = fsm.ttsService.GetAudioFile(newRequest.MessageTTS)
+	if err != nil {
+		fsm.logger.InfoPkgf(logPrefix, "Error doing the Text-to-Speech conversion: %s", err)
+		fsm.transitionTo(WaitingInputs)
+		return nil
+	}
+
+	// TODO: detect if it's necessary to convert the audio file using ffmpeg -- right now Google Translate produces WAVs that Baresip can handle
+
+	// Dial a new call
+	fsm.numDialCmds++
+	fsm.currentCallStartTime = time.Now()
+	_, err2 := fsm.baresipHandle.CmdTxWithAck(gobaresip.CommandMsg{
+		Command: "dial",
+		Params:  newRequest.CalledNumber,
+	})
+	if err2 != nil {
+		fsm.logger.InfoPkgf(logPrefix, "Error dialing: %s", err2)
+		fsm.transitionTo(WaitingInputs)
+		return nil
+	}
+	fsm.transitionTo(WaitForCallEstablishment)
+	return nil
+}
+
+/* -------------------------------------------------------------------------- */
+/*                               BARESIP EVENTS                               */
+/* -------------------------------------------------------------------------- */
 
 func (fsm *VoipClientFSM) OnRegisterOk(event gobaresip.EventMsg) error {
 	fsm.logger.InfoPkgf(logPrefix, "Successful SIP REGISTER for: %s. This is good news. It means your 'voip_provider' addon configuration is valid and Baresip authenticated against your VOIP provider. Now calls can be made and can be received!", event.AccountAOR)
@@ -167,43 +242,8 @@ func (fsm *VoipClientFSM) OnRegisterFail(event gobaresip.EventMsg) error {
 	return nil
 }
 
-func (fsm *VoipClientFSM) OnNewOutgoingCallRequest(newRequest NewCallRequest) error {
-	fsm.logger.InfoPkgf(logPrefix, "Received new outgoing call request: %+v", newRequest)
-
-	if fsm.currentState != WaitingInputs {
-		// FIXME: perhaps we might instead abort the current operation and start a new call?
-		fsm.logger.Warnf("FSM is not in the WaitingInputs state, current state: %s. Dropping the new call request. Please wait for previous call to get closed.", fsm.currentState)
-		return ErrInvalidState
-	}
-
-	// ask TTS to generate the WAV file and get its path
-	var err error
-	fsm.pendingAudioFileToPlay, err = fsm.ttsService.GetAudioFile(newRequest.MessageTTS)
-	if err != nil {
-		fsm.logger.InfoPkgf(logPrefix, "Error doing the Text-to-Speech conversion: %s", err)
-		fsm.transitionTo(WaitingInputs)
-		return nil
-	}
-
-	// TODO: detect if it's necessary to convert the audio file using ffmpeg -- right now Google Translate produces WAVs that Baresip can handle
-
-	// Dial a new call
-	fsm.numDialCmds++
-	_, err2 := fsm.baresipHandle.CmdTxWithAck(gobaresip.CommandMsg{
-		Command: "dial",
-		Params:  newRequest.CalledNumber,
-	})
-	if err2 != nil {
-		fsm.logger.InfoPkgf(logPrefix, "Error dialing: %s", err2)
-		fsm.transitionTo(WaitingInputs)
-		return nil
-	}
-	fsm.transitionTo(WaitForCallEstablishment)
-	return nil
-}
-
 func (fsm *VoipClientFSM) OnCallOutgoing(event gobaresip.EventMsg) error {
-	fsm.logger.InfoPkgf(logPrefix, "Received call outgoing for Peer URI: %s", event.PeerURI)
+	fsm.logger.InfoPkgf(logPrefix, "Received outgoing call notification for Peer URI: %s", event.PeerURI)
 
 	fsm.currentCallId = event.ID
 
@@ -216,13 +256,13 @@ func (fsm *VoipClientFSM) OnCallEstablished(event gobaresip.EventMsg) error {
 	fsm.logger.InfoPkgf(logPrefix, "Received call estabilished status update for Peer URI: %s", event.PeerURI)
 
 	if fsm.currentState != WaitForCallEstablishment {
-		fsm.logger.Warnf("FSM is not in the WaitForCallEstablishment state, current state: %s. Ignoring new request.", fsm.currentState)
+		fsm.logger.WarnPkgf(logPrefix, "FSM is not in the WaitForCallEstablishment state, current state: %s. Ignoring new request.", fsm.currentState)
 		return ErrInvalidState
 	}
 
 	if fsm.currentCallId != "" &&
 		fsm.currentCallId != event.ID {
-		fsm.logger.Warnf("Received call established event for a different call ID (%s), expected %s. This is a bug.",
+		fsm.logger.WarnPkgf(logPrefix, "Received call established event for a different call ID (%s), expected %s. This is a bug.",
 			event.ID, fsm.currentCallId)
 		return ErrInvalidState
 	}
@@ -245,7 +285,7 @@ func (fsm *VoipClientFSM) OnEndOfFile(event gobaresip.EventMsg) error {
 	fsm.logger.InfoPkgf(logPrefix, "Received end-of-file notification: %s", event.PeerURI)
 
 	if fsm.currentState != WaitForCallCompletion {
-		fsm.logger.Warnf("FSM is not in the WaitForCallCompletion state, current state: %s. Ignoring new request.", fsm.currentState)
+		fsm.logger.WarnPkgf(logPrefix, "FSM is not in the WaitForCallCompletion state, current state: %s. Ignoring new request.", fsm.currentState)
 		return ErrInvalidState
 	}
 
@@ -263,13 +303,13 @@ func (fsm *VoipClientFSM) OnCallClosed(event gobaresip.EventMsg) error {
 	fsm.logger.InfoPkgf(logPrefix, "Received call closed event for Peer URI: %s", event.PeerURI)
 
 	if fsm.currentState == WaitingInputs {
-		fsm.logger.Warnf("FSM is not in a state where a call should be active, current state: %s. This is a bug.", fsm.currentState)
+		fsm.logger.WarnPkgf(logPrefix, "FSM is not in a state where a call should be active, current state: %s. This is a bug.", fsm.currentState)
 		return ErrInvalidState
 	}
 
 	if fsm.currentCallId != "" &&
 		fsm.currentCallId != event.ID {
-		fsm.logger.Warnf("Received call closed event for a different call ID (%s), expected %s. This is a bug.",
+		fsm.logger.WarnPkgf(logPrefix, "Received call closed event for a different call ID (%s), expected %s. This is a bug.",
 			event.ID, fsm.currentCallId)
 		return ErrInvalidState
 	}
