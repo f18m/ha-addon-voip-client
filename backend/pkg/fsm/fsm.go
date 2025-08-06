@@ -174,6 +174,9 @@ func (fsm *VoipClientFSM) OnTimeoutTicker() {
 
 	case WaitForCallEstablishment:
 	case WaitForCallCompletion:
+
+		fsm.logger.InfoPkgf(logPrefix, "start call time is %s; max duration is %s", fsm.currentCallStartTime, fsm.maxVoiceCallDuration)
+
 		if !fsm.currentCallStartTime.IsZero() &&
 			time.Since(fsm.currentCallStartTime) > fsm.maxVoiceCallDuration {
 
@@ -269,11 +272,13 @@ func (fsm *VoipClientFSM) OnRegisterFail(event gobaresip.EventMsg) error {
 }
 
 func (fsm *VoipClientFSM) OnCallOutgoing(event gobaresip.EventMsg) error {
-	fsm.logger.InfoPkgf(logPrefix, "Received outgoing call notification for Peer URI: %s", event.PeerURI)
+	fsm.logger.InfoPkgf(logPrefix, "Received outgoing call notification for call ID (%s) and Peer URI: %s",
+		event.ID, event.PeerURI)
 
 	fsm.currentCallId = event.ID
 
-	// No need to transition into any new state... the call will progress autonomously either to CLOSE or ESTABLISHED statuses
+	// No need to transition into any new state...
+	// the call will progress autonomously either to CLOSE or ESTABLISHED statuses
 
 	return nil
 }
