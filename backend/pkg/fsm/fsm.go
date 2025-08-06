@@ -11,25 +11,6 @@ import (
 	"github.com/f18m/go-baresip/pkg/gobaresip"
 )
 
-/*
-Visit https://www.mermaidchart.com/play
-
-flowchart TD
-    Uninitialized("**Uninitialized**")
-    WaitingUserAgentRegistration("**WaitingUserAgentRegistration**<br>Add SIP UA to Baresip, which starts registration/auth")
-    WaitingInputs("**WaitingInputs**<br>Waiting for new call requests from HA")
-    WaitForCallEstablishment("**WaitForCallEstablishment**<br>Run the TTS engine to produce a WAV file. Ask baresip to start the call, then wait")
-    WaitForCallCompletion("**WaitForCallCompletion**<br>Ask baresip to reproduce the TTS message")
-
-    Uninitialized -- Baresip TCP skt connected --> WaitingUserAgentRegistration
-    WaitingUserAgentRegistration -- Baresip Event: Register OK --> WaitingInputs
-    WaitingInputs --HTTP Call Request from HA --> WaitForCallEstablishment
-    WaitForCallEstablishment -- Baresip call ESTABLISHED event --> WaitForCallCompletion
-    WaitForCallCompletion -- Baresip call CLOSED event --> WaitingInputs
-    WaitForCallCompletion -- Baresip End-of-File event (send hangup command) --> WaitingInputs
-
-*/
-
 type FSMState int
 
 const (
@@ -59,16 +40,41 @@ func (s FSMState) String() string {
 
 const logPrefix = "fsm"
 
+// NewCallRequest is the type to use to request a [VoipClientFSM] to start a new call.
 type NewCallRequest struct {
 	CalledNumber string
 	MessageTTS   string
 }
 
+/*
+VoipClientFSM is the Finite State Machine (FSM) that keeps track of the current state of the VoIP client.
+Note that this type is not thread-safe, so all its methods must be invoked from a single goroutine.
+
+Visit https://www.mermaidchart.com/play and paste the following code to visualize the state machine:
+
+flowchart TD
+
+	Uninitialized("**Uninitialized**")
+	WaitingUserAgentRegistration("**WaitingUserAgentRegistration**<br>Add SIP UA to Baresip, which starts registration/auth")
+	WaitingInputs("**WaitingInputs**<br>Waiting for new call requests from HA")
+	WaitForCallEstablishment("**WaitForCallEstablishment**<br>Run the TTS engine to produce a WAV file. Ask baresip to start the call, then wait")
+	WaitForCallCompletion("**WaitForCallCompletion**<br>Ask baresip to reproduce the TTS message")
+
+	Uninitialized -- Baresip TCP skt connected --> WaitingUserAgentRegistration
+	WaitingUserAgentRegistration -- Baresip Event: Register OK --> WaitingInputs
+	WaitingInputs --HTTP Call Request from HA --> WaitForCallEstablishment
+	WaitForCallEstablishment -- Baresip call ESTABLISHED event --> WaitForCallCompletion
+	WaitForCallCompletion -- Baresip call CLOSED event --> WaitingInputs
+	WaitForCallCompletion -- Baresip End-of-File event (send hangup command) --> WaitingInputs
+*/
 type VoipClientFSM struct {
-	logger               *logger.CustomLogger
-	baresipHandle        *gobaresip.Baresip
-	ttsService           *tts.TTSService
+	// config
 	maxVoiceCallDuration time.Duration
+
+	// link to other objects
+	logger        *logger.CustomLogger
+	baresipHandle *gobaresip.Baresip
+	ttsService    *tts.TTSService
 
 	// state changes channel
 	stateChangesPubCh broadcast.Broadcaster
@@ -121,7 +127,7 @@ func (fsm *VoipClientFSM) transitionTo(state FSMState) {
 	if state == WaitingInputs {
 		fsm.pendingAudioFileToPlay = ""
 		fsm.currentCallId = ""
-		fsm.currentCallStartTime = time.Time{}
+		fsm.currentCallStartTime = time.Time{} // empty time
 	}
 
 	// notify listeners, if any
@@ -167,9 +173,19 @@ func (fsm *VoipClientFSM) OnTimeoutTicker() {
 	case WaitForCallCompletion:
 		if !fsm.currentCallStartTime.IsZero() &&
 			time.Since(fsm.currentCallStartTime) > fsm.maxVoiceCallDuration {
+
+			// if the current state is "WaitForCallEstablishment", then it means we
 			// reached timeout for the whole call even before the call becomes established
 			fsm.logger.WarnPkgf(logPrefix, "Timeout after %s in state [%s]. Call [%s] aborted.",
 				fsm.maxVoiceCallDuration.String(), fsm.currentState.String(), fsm.currentCallId)
+
+			_, err := fsm.baresipHandle.CmdHangupID(fsm.currentCallId)
+			if err != nil {
+				fsm.logger.InfoPkgf(logPrefix, "Error hanging up the call after timeout: %s", err)
+
+				// keep going
+			}
+
 			fsm.transitionTo(WaitingInputs)
 		}
 	}
@@ -202,10 +218,7 @@ func (fsm *VoipClientFSM) OnNewOutgoingCallRequest(newRequest NewCallRequest) er
 	// Dial a new call
 	fsm.numDialCmds++
 	fsm.currentCallStartTime = time.Now()
-	_, err2 := fsm.baresipHandle.CmdTxWithAck(gobaresip.CommandMsg{
-		Command: "dial",
-		Params:  newRequest.CalledNumber,
-	})
+	_, err2 := fsm.baresipHandle.CmdDial(newRequest.CalledNumber)
 	if err2 != nil {
 		fsm.logger.InfoPkgf(logPrefix, "Error dialing: %s", err2)
 		fsm.transitionTo(WaitingInputs)
@@ -267,10 +280,7 @@ func (fsm *VoipClientFSM) OnCallEstablished(event gobaresip.EventMsg) error {
 		return ErrInvalidState
 	}
 
-	_, err := fsm.baresipHandle.CmdTxWithAck(gobaresip.CommandMsg{
-		Command: "ausrc",
-		Params:  fmt.Sprintf("aufile,%s", fsm.pendingAudioFileToPlay),
-	})
+	_, err := fsm.baresipHandle.CmdAusrc("aufile", fsm.pendingAudioFileToPlay)
 	if err != nil {
 		fsm.logger.InfoPkgf(logPrefix, "Error setting audio source to the right file: %s", err)
 		fsm.transitionTo(WaitForCallCompletion)
@@ -290,7 +300,7 @@ func (fsm *VoipClientFSM) OnEndOfFile(event gobaresip.EventMsg) error {
 	}
 
 	// hang up the call!
-	_, err := fsm.baresipHandle.CmdHangup()
+	_, err := fsm.baresipHandle.CmdHangupID(fsm.currentCallId)
 	if err != nil {
 		fsm.logger.InfoPkgf(logPrefix, "Error hanging up the call: %s", err)
 		return nil

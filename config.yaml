@@ -69,7 +69,7 @@ options:
     # only after the addon has _completed_ the voice call.
     synchronous: true
   voice_calls:
-    # TODO
+    # this is the max duration for 
     max_duration: 120s
 
 schema:

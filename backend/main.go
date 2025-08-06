@@ -58,7 +58,7 @@ func main() {
 	// PUB-SUB channel used from FSM to publish its state changes to...whoever is interested
 	broadcaster := broadcast.NewBroadcaster(100)
 
-	// Run Input HTTP server
+	// Run the input HTTP server, which can process HTTP API requests coming from HomeAssistant.
 	var inputServer httpserver.HttpServer
 	if cfg.HttpRESTServer.Synchronous {
 		inputServer = httpserver.NewServer(logger, broadcaster, cfg.Contacts)
@@ -76,6 +76,7 @@ func main() {
 	// - BARESIP connected event: TCP socket connected
 	// - BARESIP events: unsolicited messages from baresip, e.g. incoming calls, registrations, etc.
 	// - INPUT HTTP requests: messages coming from HomeAssistant via the HTTP server
+	// - TICKER events: periodic events to check the status of the calls and the Baresip client
 	// using a simple Finite State Machine (FSM) -- all business logic is implemented in the FSM
 	cChan := baresipConn.GetConnectedChan()
 	eChan := baresipConn.GetEventChan()
@@ -84,7 +85,7 @@ func main() {
 	statsTicker := time.NewTicker(cfg.GetStatsInterval())
 	timeoutTicker := time.NewTicker(cfg.GetVoiceCallMaxDuration() / 10)
 
-	// Initiate
+	// Run the FSM in its own goroutine
 
 	go func() {
 		for {
@@ -139,6 +140,7 @@ func main() {
 				logger.InfoPkgf(logPrefix, "Baresip client stats: %+v", stats)
 
 			case <-timeoutTicker.C:
+				// Let the FSM check if there are any calls that have been established for too long
 				fsmInstance.OnTimeoutTicker()
 			}
 		}
