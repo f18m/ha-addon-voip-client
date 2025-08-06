@@ -11,6 +11,8 @@ import (
 	"github.com/f18m/go-baresip/pkg/gobaresip"
 )
 
+const maxCallAbortDuration = 5 * time.Second
+
 type FSMState int
 
 const (
@@ -89,6 +91,7 @@ type VoipClientFSM struct {
 	pendingAudioFileToPlay string
 	currentCallId          string
 	currentCallStartTime   time.Time
+	currentCallAbortTime   time.Time
 }
 
 /*
@@ -133,6 +136,7 @@ func (fsm *VoipClientFSM) transitionTo(state FSMState) {
 		fsm.pendingAudioFileToPlay = ""
 		fsm.currentCallId = ""
 		fsm.currentCallStartTime = time.Time{} // empty time
+		fsm.currentCallAbortTime = time.Time{} // empty time
 	}
 
 	// notify listeners, if any
@@ -173,24 +177,44 @@ func (fsm *VoipClientFSM) OnTimeoutTicker() {
 		return
 
 	case WaitForCallEstablishment, WaitForCallCompletion:
-		fsm.logger.InfoPkgf(fsm.getLogPrefix(), "start call time is %s; max duration is %s", fsm.currentCallStartTime, fsm.maxVoiceCallDuration)
+		// debug log
+		// fsm.logger.InfoPkgf(fsm.getLogPrefix(), "start call time is %s; max duration is %s", fsm.currentCallStartTime, fsm.maxVoiceCallDuration)
 
 		if !fsm.currentCallStartTime.IsZero() &&
 			time.Since(fsm.currentCallStartTime) > fsm.maxVoiceCallDuration {
 
-			// if the current state is "WaitForCallEstablishment", then it means we
-			// reached timeout for the whole call even before the call becomes established
-			fsm.logger.WarnPkgf(fsm.getLogPrefix(), "Timeout after %s in state [%s]. Call [%s] aborted.",
-				fsm.maxVoiceCallDuration.String(), fsm.currentState.String(), fsm.currentCallId)
+			if fsm.currentCallAbortTime.IsZero() {
 
-			_, err := fsm.baresipHandle.CmdHangupID(fsm.currentCallId)
-			if err != nil {
-				fsm.logger.InfoPkgf(fsm.getLogPrefix(), "Error hanging up the call after timeout: %s", err)
+				// this is the first time we reach the timeout for this call;
+				// * if the current state is "WaitForCallEstablishment", then it means we
+				//   reached timeout for the whole call even before the call becomes established
+				// * if the current state is "WaitForCallCompletion", then it means the call was established
+				//   but the audio file was not finished playing before the timeout expired
 
-				// keep going
+				fsm.logger.WarnPkgf(fsm.getLogPrefix(), "Timeout after %s in state [%s]. Call [%s] aborted.",
+					fsm.maxVoiceCallDuration.String(), fsm.currentState.String(), fsm.currentCallId)
+
+				_, err := fsm.baresipHandle.CmdHangupID(fsm.currentCallId)
+				if err != nil {
+					fsm.logger.InfoPkgf(fsm.getLogPrefix(), "Error hanging up the call after timeout: %s", err)
+					// keep going
+				}
+
+				// NOTE: we don't really need to transition to WaitingInputs here:
+				//       Baresip will produce a CALL_CLOSED event which will force the transition
+				//       back to WaitingInputs
+				fsm.currentCallAbortTime = time.Now()
+
+			} else if time.Since(fsm.currentCallAbortTime) > maxCallAbortDuration {
+
+				// an abort attempt was already made for this call... but the FSM has not returned yet into
+				// the WaitingInputs state...
+				// we waited enough time for the call to be aborted, but it seems that Baresip is not
+				// producing the CALL_CLOSED event... the safest thing we can do is to transition back to WaitingInputs
+				fsm.logger.WarnPkgf(fsm.getLogPrefix(), "Timeout after %s in state [%s]. Call [%s] aborted but Baresip did not produce CALL_CLOSED event. Transitioning back to WaitingInputs.",
+					fsm.maxVoiceCallDuration.String(), fsm.currentState.String(), fsm.currentCallId)
+				fsm.transitionTo(WaitingInputs)
 			}
-
-			fsm.transitionTo(WaitingInputs)
 		}
 	}
 }
