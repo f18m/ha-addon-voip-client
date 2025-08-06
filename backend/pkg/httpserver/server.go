@@ -15,6 +15,10 @@ import (
 	"github.com/dustin/go-broadcast"
 )
 
+const logPrefix = "httpserver"
+const dialEndpoint = "/dial"
+const httpClientUpdateInterval = 5 * time.Second
+
 type DialPayload struct {
 	CalledNumber  string `json:"called_number"`
 	CalledContact string `json:"called_contact"`
@@ -30,9 +34,6 @@ type HttpServer struct {
 	fsmStateSubCh broadcast.Broadcaster
 	outCh         chan DialPayload
 }
-
-const logPrefix = "httpserver"
-const dialEndpoint = "/dial"
 
 func NewServer(logger *logger.CustomLogger, fsmStatePubSub broadcast.Broadcaster, contacts []config.AddonContact) HttpServer {
 	h := HttpServer{
@@ -77,9 +78,9 @@ func (h *HttpServer) waitForFSMState(desiredState fsm.FSMState, w http.ResponseW
 	h.fsmStateSubCh.Register(ch)
 	defer h.fsmStateSubCh.Unregister(ch)
 
-	// create ticker to provide some update
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
+	// create ticker to provide some update to the HTTP client (HomeAssistant)
+	tickerUpdates := time.NewTicker(httpClientUpdateInterval)
+	defer tickerUpdates.Stop()
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -104,12 +105,17 @@ func (h *HttpServer) waitForFSMState(desiredState fsm.FSMState, w http.ResponseW
 			}
 
 			// keep waiting
-			h.logger.InfoPkgf(logPrefix, "Ignoring FSM state change [%s]; waiting for FSM to reach state [%s]",
-				state.String(), desiredState.String())
+			// log disabled: this log is too verbose
+			// h.logger.InfoPkgf(logPrefix, "Ignoring FSM state change to [%s]; waiting for FSM to reach state [%s]",
+			//   state.String(), desiredState.String())
 
-		case <-ticker.C:
+		case <-tickerUpdates.C:
 			// Provide update to the HTTP client
-			_, _ = io.WriteString(w, "...call ongoing...\n")
+			_, err := io.WriteString(w, "...call ongoing...\n")
+			if err != nil {
+				h.logger.Warnf("Error writing to HTTP client: %s. Is the client still connected?", err.Error())
+				return // stop waiting
+			}
 			flusher.Flush() // Trigger "chunked" encoding and send a chunk...
 		}
 	}
@@ -118,7 +124,7 @@ func (h *HttpServer) waitForFSMState(desiredState fsm.FSMState, w http.ResponseW
 func (h *HttpServer) serveDial(w http.ResponseWriter, r *http.Request) {
 	// Only accept POST requests
 	if r.Method != http.MethodPost {
-		h.logger.InfoPkg(logPrefix, "Replying with HTTP 405: Only POST method is allowed")
+		h.logger.InfoPkg(logPrefix, "Replying with HTTP 405: Only POST method is allowed, received "+r.Method)
 		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -127,12 +133,13 @@ func (h *HttpServer) serveDial(w http.ResponseWriter, r *http.Request) {
 	var payload DialPayload
 	err := json.NewDecoder(r.Body).Decode(&payload)
 	if err != nil {
-		h.logger.InfoPkg(logPrefix, "Replying with HTTP 400: invalid JSON payload")
+		h.logger.InfoPkgf(logPrefix, "Replying with HTTP 400: invalid JSON payload: %s", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	// Log the received payload
+	h.logger.InfoPkgf(logPrefix, "**********************************") // log marker
 	h.logger.InfoPkgf(logPrefix, "Received payload: CalledNumber=%s, CalledContact=%s, MessageTTS=%s\n",
 		payload.CalledNumber, payload.CalledContact, payload.MessageTTS)
 
@@ -184,6 +191,8 @@ func (h *HttpServer) serveDial(w http.ResponseWriter, r *http.Request) {
 	h.outCh <- payload
 	// h.logger.InfoPkgf(logPrefix, "Sent new call request to the FSM")
 
+	// FIXME wait for FSM to transition out of WaitingInputs at least
+
 	if h.synchronous {
 		h.logger.InfoPkgf(logPrefix, "Writing 200 OK and then waiting for processing to complete (synchronous mode) before sending full body to the HTTP client...")
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
@@ -215,6 +224,8 @@ func (h *HttpServer) ListenAndServe() {
 	}
 }
 
+// GetInputChannel returns the channel where all requests coming from the HTTP interface are sent
+// This is used by the FSM to read the requests and process them
 func (h *HttpServer) GetInputChannel() chan DialPayload {
 	return h.outCh
 }

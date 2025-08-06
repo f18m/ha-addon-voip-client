@@ -75,7 +75,18 @@ func (l *CustomLogger) Warn(message string) {
 // Warnf
 // Arguments are handled in the manner of [fmt.Printf].
 func (l *CustomLogger) Warnf(format string, v ...any) {
-	l.Warn(fmt.Sprintf(format, v...))
+	l.Log(WARN, fmt.Sprintf(format, v...))
+}
+
+// WarnPkg
+func (l *CustomLogger) WarnPkg(pkg, message string) {
+	l.Log(WARN, pkg+": "+message)
+}
+
+// WarnPkgf
+// Arguments are handled in the manner of [fmt.Printf].
+func (l *CustomLogger) WarnPkgf(pkg, format string, v ...any) {
+	l.Log(WARN, pkg+": "+fmt.Sprintf(format, v...))
 }
 
 // Fatal

@@ -152,6 +152,13 @@ http_rest_server:
   # the HTTP 200 OK response will be returned to the client
   # only after the addon has _completed_ the voice call.
   synchronous: true
+voice_calls:
+    # this is the maximum duration for each voice call to be picked up by the called party
+    # (approximately, the "max ringing time") and the maximum duration of the call once it
+    # has been established.
+    # This means that this is an upper limit also on the length of the audio messages
+    # produced by the TTS engine... increase this is you want to send very long audio messages.
+    max_duration: 120s
 ```
 
 
