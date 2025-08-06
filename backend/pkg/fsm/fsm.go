@@ -216,7 +216,13 @@ func (fsm *VoipClientFSM) OnNewOutgoingCallRequest(newRequest NewCallRequest) er
 		return nil
 	}
 
-	// TODO: detect if it's necessary to convert the audio file using ffmpeg -- right now Google Translate produces WAVs that Baresip can handle
+	// TODO1: detect if it's necessary to convert the audio file using ffmpeg
+	// As of Aug 2025, Google Translate produces WAVs that Baresip can handle, so this is not
+	// strictly necessary... but in future who knows?
+
+	// TODO2: it would be good to check if the DURATION of the audio file is LONGER than
+	// the 	fsm.maxVoiceCallDuration, and if so, warn the user that the call will be aborted
+	// after fsm.maxVoiceCallDuration seconds, even if the audio file is not finished
 
 	// Dial a new call
 	fsm.numDialCmds++
@@ -228,6 +234,10 @@ func (fsm *VoipClientFSM) OnNewOutgoingCallRequest(newRequest NewCallRequest) er
 		return nil
 	}
 	fsm.transitionTo(WaitForCallEstablishment)
+
+	fsm.logger.InfoPkgf(logPrefix, "Dial command sent successfully, waiting up to %s for call to be established...",
+		fsm.maxVoiceCallDuration.String())
+
 	return nil
 }
 
@@ -291,6 +301,12 @@ func (fsm *VoipClientFSM) OnCallEstablished(event gobaresip.EventMsg) error {
 	}
 
 	fsm.transitionTo(WaitForCallCompletion)
+
+	// reset timeout counter:
+	fsm.currentCallStartTime = time.Now()
+	fsm.logger.InfoPkgf(logPrefix, "Audio playback was started successfully, waiting up to %s for the audio file to complete...",
+		fsm.maxVoiceCallDuration.String())
+
 	return nil
 }
 

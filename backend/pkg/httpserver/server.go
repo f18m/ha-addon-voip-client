@@ -15,6 +15,10 @@ import (
 	"github.com/dustin/go-broadcast"
 )
 
+const logPrefix = "httpserver"
+const dialEndpoint = "/dial"
+const httpClientUpdateInterval = 5 * time.Second
+
 type DialPayload struct {
 	CalledNumber  string `json:"called_number"`
 	CalledContact string `json:"called_contact"`
@@ -30,9 +34,6 @@ type HttpServer struct {
 	fsmStateSubCh broadcast.Broadcaster
 	outCh         chan DialPayload
 }
-
-const logPrefix = "httpserver"
-const dialEndpoint = "/dial"
 
 func NewServer(logger *logger.CustomLogger, fsmStatePubSub broadcast.Broadcaster, contacts []config.AddonContact) HttpServer {
 	h := HttpServer{
@@ -77,9 +78,9 @@ func (h *HttpServer) waitForFSMState(desiredState fsm.FSMState, w http.ResponseW
 	h.fsmStateSubCh.Register(ch)
 	defer h.fsmStateSubCh.Unregister(ch)
 
-	// create ticker to provide some update
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
+	// create ticker to provide some update to the HTTP client (HomeAssistant)
+	tickerUpdates := time.NewTicker(httpClientUpdateInterval)
+	defer tickerUpdates.Stop()
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -104,12 +105,17 @@ func (h *HttpServer) waitForFSMState(desiredState fsm.FSMState, w http.ResponseW
 			}
 
 			// keep waiting
-			h.logger.InfoPkgf(logPrefix, "Ignoring FSM state change to [%s]; waiting for FSM to reach state [%s]",
-				state.String(), desiredState.String())
+			// log disabled: this log is too verbose
+			// h.logger.InfoPkgf(logPrefix, "Ignoring FSM state change to [%s]; waiting for FSM to reach state [%s]",
+			//   state.String(), desiredState.String())
 
-		case <-ticker.C:
-			// Provide update to the HTTP client -- FIXME check if we get an error which means client is gone
-			_, _ = io.WriteString(w, "...call ongoing...\n")
+		case <-tickerUpdates.C:
+			// Provide update to the HTTP client
+			_, err := io.WriteString(w, "...call ongoing...\n")
+			if err != nil {
+				h.logger.Warnf("Error writing to HTTP client: %s. Is the client still connected?", err.Error())
+				return // stop waiting
+			}
 			flusher.Flush() // Trigger "chunked" encoding and send a chunk...
 		}
 	}
@@ -133,6 +139,7 @@ func (h *HttpServer) serveDial(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Log the received payload
+	h.logger.InfoPkgf(logPrefix, "**********************************") // log marker
 	h.logger.InfoPkgf(logPrefix, "Received payload: CalledNumber=%s, CalledContact=%s, MessageTTS=%s\n",
 		payload.CalledNumber, payload.CalledContact, payload.MessageTTS)
 
@@ -217,6 +224,8 @@ func (h *HttpServer) ListenAndServe() {
 	}
 }
 
+// GetInputChannel returns the channel where all requests coming from the HTTP interface are sent
+// This is used by the FSM to read the requests and process them
 func (h *HttpServer) GetInputChannel() chan DialPayload {
 	return h.outCh
 }
