@@ -124,7 +124,7 @@ func (h *HttpServer) waitForFSMState(desiredState fsm.FSMState, w http.ResponseW
 func (h *HttpServer) serveDial(w http.ResponseWriter, r *http.Request) {
 	// Only accept POST requests
 	if r.Method != http.MethodPost {
-		h.logger.InfoPkg(logPrefix, "Replying with HTTP 405: Only POST method is allowed")
+		h.logger.InfoPkg(logPrefix, "Replying with HTTP 405: Only POST method is allowed, received "+r.Method)
 		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -133,7 +133,7 @@ func (h *HttpServer) serveDial(w http.ResponseWriter, r *http.Request) {
 	var payload DialPayload
 	err := json.NewDecoder(r.Body).Decode(&payload)
 	if err != nil {
-		h.logger.InfoPkg(logPrefix, "Replying with HTTP 400: invalid JSON payload")
+		h.logger.InfoPkgf(logPrefix, "Replying with HTTP 400: invalid JSON payload: %s", err.Error())
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
