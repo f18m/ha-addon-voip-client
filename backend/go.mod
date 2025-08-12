@@ -2,7 +2,7 @@ module voip-client-backend
 
 go 1.24
 
-toolchain go1.24.4
+toolchain go1.25.0
 
 require (
 	github.com/dustin/go-broadcast v0.0.0-20211018055107-71439988bd91
