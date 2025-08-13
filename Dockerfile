@@ -47,7 +47,7 @@ RUN mkdir -p /root/dist/usr && \
 # About base image: we need to use a musl-based docker image since the actual HomeAssistant addon
 # base image will be musl-based as well and we need to ensure binary compatibility between he
 # builder layer and the actual addon layer.
-FROM golang:1.24-alpine AS backend-builder
+FROM golang:1.25-alpine AS backend-builder
 
 # build go backend
 WORKDIR /app/backend
