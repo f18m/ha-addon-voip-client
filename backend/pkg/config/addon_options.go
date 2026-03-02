@@ -19,7 +19,7 @@ type AddonOptions struct {
 	VoipProvider struct {
 		Name     string `json:"name"`
 		Account  string `json:"account"`
-		Password string `json:"password"`
+		Password string `json:"password"` // #nosec G117 -- this maps Home Assistant add-on options; value is runtime-provided, not hardcoded
 	} `json:"voip_provider"`
 
 	TTSEngine struct {
