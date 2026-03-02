@@ -2,6 +2,8 @@ github.com/dustin/go-broadcast v0.0.0-20211018055107-71439988bd91 h1:jAUM3D1KIrJ
 github.com/dustin/go-broadcast v0.0.0-20211018055107-71439988bd91/go.mod h1:8rK6Kbo1Jd6sK22b24aPVgAm3jlNy1q1ft+lBALdIqA=
 github.com/f18m/go-baresip v1.0.2 h1:v/NsQTR900xnzTnuTLCHsd3+8rtyNweQ1yyHPtH6UJ8=
 github.com/f18m/go-baresip v1.0.2/go.mod h1:flYhOS7i83wdM/eIWD2LbUIPqnGQGqBYEnoSjH1AYZw=
+github.com/f18m/go-baresip v1.0.4 h1:fGC9lC/dsznsA1dQTrUrSqCbXypOuR7pyuTvvYIgGkQ=
+github.com/f18m/go-baresip v1.0.4/go.mod h1:VEc7QN1NNcthOWZ6//2yH4BjVFO79M0GSMkth6oDb/o=
 github.com/goccy/go-json v0.10.5 h1:Fq85nIqj+gXn/S5ahsiTlK3TmC85qgirsdTP/+DeaC4=
 github.com/goccy/go-json v0.10.5/go.mod h1:oq7eo15ShAhp70Anwd5lgX2pLfOS3QCiwU/PULtXL6M=
 github.com/markdingo/netstring v1.0.2 h1:FptMPZdF/1QbW4gf8oVB7qE1GtZf7DgM7wq5o+dtS8o=
