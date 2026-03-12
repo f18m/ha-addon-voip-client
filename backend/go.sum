@@ -6,5 +6,7 @@ github.com/f18m/go-baresip v1.0.4 h1:fGC9lC/dsznsA1dQTrUrSqCbXypOuR7pyuTvvYIgGkQ
 github.com/f18m/go-baresip v1.0.4/go.mod h1:VEc7QN1NNcthOWZ6//2yH4BjVFO79M0GSMkth6oDb/o=
 github.com/goccy/go-json v0.10.5 h1:Fq85nIqj+gXn/S5ahsiTlK3TmC85qgirsdTP/+DeaC4=
 github.com/goccy/go-json v0.10.5/go.mod h1:oq7eo15ShAhp70Anwd5lgX2pLfOS3QCiwU/PULtXL6M=
+github.com/goccy/go-json v0.10.6 h1:p8HrPJzOakx/mn/bQtjgNjdTcN+/S6FcG2CTtQOrHVU=
+github.com/goccy/go-json v0.10.6/go.mod h1:oq7eo15ShAhp70Anwd5lgX2pLfOS3QCiwU/PULtXL6M=
 github.com/markdingo/netstring v1.0.2 h1:FptMPZdF/1QbW4gf8oVB7qE1GtZf7DgM7wq5o+dtS8o=
 github.com/markdingo/netstring v1.0.2/go.mod h1:zfPc/km8bb/5yGxJpuFLSdFfyqe/ZLTTwsC4zJS2JzI=
